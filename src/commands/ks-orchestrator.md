@@ -36,7 +36,7 @@ or checkout the feature branch in the repository base directory.
 If docs/research/<id>.md doesn't exist, produce it now following the ks-research contract: codebase-analysis skill on the story's scope, current state of the code, output structured by @templates/research.md. Otherwise reuse the existing file.
 
 ## Phase 2 — Design (UI stories only)
-If the story has a screen and docs/designs/<id>.md doesn't exist, follow the ks-design contract: fail-closed on docs/design-system.md (missing → stop and point to /ks-design-system), ask who produces the design (agent / Claude Design / Gemini) via AskUserQuestion, output docs/designs/<id>.md + .html anchored to the design system only. A story without UI skips this phase.
+If the story has a screen and docs/designs/<id>/design.md doesn't exist, follow the ks-design contract: fail-closed on docs/design-system.md (missing → stop and point to /ks-design-system), resolve the path without blocking autonomy (autonomous agent, or a brief for an external tool — ask only when a human is in the loop), produce a finished screen anchored to the design system only, then render it and look at it. Output docs/designs/<id>/design.md + mockup.html. A story without UI skips this phase.
 
 ## Phase 3 — Plan
 If docs/plans/<id>.md doesn't exist, produce it following the ks-plan contract: small verifiable tasks, structured by @templates/plan.md.

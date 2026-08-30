@@ -4,7 +4,7 @@
 <layout, sections>
 
 ## Mockup
-docs/designs/<id>.html — visual reference. DO NOT copy into production: Execute builds with the real components.
+docs/designs/<id>/mockup.html — visual reference. DO NOT copy into production: Execute builds with the real components.
 
 ## Reused components (from the design system)
 - <Component> — <where / why>

@@ -18,12 +18,12 @@ Locate the dedicated `.worktrees/<id>` worktree, verify that it is on exactly
 branch, detached HEAD or the repository base directory itself → STOP and run
 `/ks-research <id>` first. Never create or switch branches here.
 
-Read: docs/stories.md (the target story), docs/research/<id>.md (if it exists), docs/design-system.md and docs/designs/<id>.md (if they exist), docs/architecture.md, AGENTS.md
+Read: docs/stories.md (the target story), docs/research/<id>.md (if it exists), docs/design-system.md and docs/designs/<id>/design.md (if they exist), docs/architecture.md, AGENTS.md
 Output structure: @templates/plan.md
 
 If docs/research/<id>.md doesn't exist, point out that /ks-research <id> is recommended before planning — without research, the plan relies on possibly stale docs. Continue only if I confirm.
 
-If the story has UI, the plan follows the screen defined in docs/designs/<id>.md: it references the design system's components and never invents new ones. The HTML mockup is a reference, not a source of code.
+If the story has UI, the plan follows the screen defined in docs/designs/<id>/design.md: it references the design system's components and never invents new ones. The HTML mockup is a reference, not a source of code.
 
 Proceed as follows:
 1. Isolate the target story and its acceptance criteria.

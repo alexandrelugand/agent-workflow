@@ -14,7 +14,7 @@ Derive the state from the files — never guess. Bash is for read-only git queri
 2. Stories: list the ids from docs/stories.md. For each id derive:
    - complexity: the story's score (from docs/stories.md) — show it next to the id.
    - research: docs/research/<id>.md exists?
-   - design: docs/designs/<id>.md exists? (UI stories only — otherwise n/a)
+   - design: docs/designs/<id>/design.md exists? (UI stories only — otherwise n/a)
    - plan: docs/plans/<id>.md — missing / draft (no `validated: yes` in the frontmatter) / validated, plus ticked vs total task checkboxes (x/y).
    - review: grep '^Ship allowed:' docs/reviews/<id>.md → yes / no / none.
    - ship state: branch merged into the default branch → shipped; else an open PR exists → "PR open — merge pending" (manual strategy); else —.
