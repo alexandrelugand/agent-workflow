@@ -35,7 +35,10 @@ Proceed as follows:
 4. Spot the traps: existing tests, dependencies between modules, code touched by previous stories.
 5. Note what you could NOT settle in the "Open questions" section — an honest unknown beats a plausible guess.
 6. Re-score the story's complexity now that you have read the code, and compare with docs/stories.md. A score given before anyone opened a file is a guess; yours is not. A verdict of 5 carries a split proposal — it belongs here, where the facts are.
-7. Write the result to `docs/research/<id>.md`.
+7. Write the result to `docs/research/<id>.md`. **Cap it at ~200 lines.** Three agents read
+   this file afterwards and pay for its length. Keep what carries decisions — false
+   premises first, migration yes/no, name collisions, open questions, complexity — and cut
+   the narrative around them. A verified fact needs its `path:line`, not a paragraph.
 
 Write no code. Plan nothing: this command produces verified context, not a plan.
 

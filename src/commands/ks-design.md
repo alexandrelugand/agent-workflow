@@ -58,6 +58,15 @@ Low fidelity is for the rare case where a screen's structure is genuinely open a
 - `docs/designs/<id>/design.md` (structure: @templates/design-screen.md)
 - `docs/designs/<id>/mockup.html` — the screen, using exclusively the design system's tokens and components. Extra frames live beside it under the same folder.
 
+**A twin screen gets no mockup.** When the screen composes one that already ships — a list
+with a form panel, a permission-governed table, a row-action menu — `design.md` names the
+reference screen and lists the deltas: the fields that differ, the states that are new, the
+affordances that disappear. Rebuilding a mockup of an anatomy already in code costs a
+quarter of an hour and verifies nothing the rendered code will not verify better; on that
+path the render check moves to `/ks-execute`, which opens the real screen. Build the mockup
+when the story introduces a shape the product does not have yet, and say which of the two
+cases you are in at the top of `design.md`.
+
 **BRIEF path** — the agent writes the brief, the external tool produces the screens:
 1. `docs/designs/<id>/brief.md` (structure: @templates/design-brief.md): every screen with its layout, exact fields and actions, every state, and the design-system constraints **copied in** so the brief is self-contained and pasteable. Out-of-scope stated. **This file is the deliverable of this step — not a chat message.** A file survives the session and can be picked up by a different agent or a different tool.
 2. The result comes back (exported HTML, screenshot or description). Record it as `docs/designs/<id>/mockup.html` and write `docs/designs/<id>/design.md` describing the screen and pointing at it.

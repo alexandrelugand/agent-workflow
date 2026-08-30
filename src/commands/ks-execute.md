@@ -1,5 +1,5 @@
 ---
-description: Get a story implemented in TDD, in an isolated subagent. Never codes in the main context.
+description: Get a story implemented in an isolated subagent. Never codes in the main context.
 argument-hint: <story id or name>
 allowed-tools:
   - Read
@@ -33,10 +33,10 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 ### Step 2 — Delegate
 Invoke the Agent tool:
 - subagent_type: implementer
-- description: Implement story <id> in TDD
+- description: Implement story <id>
 - working directory: the absolute dedicated worktree path verified in Step 1.
-- prompt: Implement story <id> from docs/plans/<id>.md, following docs/architecture.md and AGENTS.md. Read docs/research/<id>.md first when it exists — the plan decides, the research holds the verified facts and the traps, and you commit it. The worktree and branch are already prepared and verified: do not create a worktree, switch branches, checkout, or stash. Strict TDD, task by task: failing test → code → passing test, checkbox ticked. One single commit at the end of the story, carrying the story docs and every task — never one commit per task. Implement only what the plan specifies. The tdd-skill is preloaded in your context.
-- On a FIX run, prepend to the prompt: This story was blocked in review. Fix every critical and major finding from docs/reviews/<id>.md first, test-first, then finish any unimplemented plan task.
+- prompt: Implement story <id> from docs/plans/<id>.md, following docs/architecture.md and AGENTS.md. Read docs/research/<id>.md first when it exists — the plan decides, the research holds the verified facts and the traps, and you commit it. The worktree and branch are already prepared and verified: do not create a worktree, switch branches, checkout, or stash. Task by task, in plan order: write the task as a whole block, run its focused suite, tick the checkbox. No red-first ceremony and no invariant mutations. Focused suite per task; full suite once at the end (twice if a task touched a shared file); end-to-end once at the end, never in the loop; the type check once at the very end, after the last edit. Where the tests go, and the budget of about 25 per story, are settled in AGENTS.md, "Where the tests go". One single commit at the end of the story, carrying the story docs and every task — never one commit per task. Implement only what the plan specifies.
+- On a FIX run, prepend to the prompt: This story was blocked in review. Fix every critical and major finding from docs/reviews/<id>.md first, then finish any unimplemented plan task.
 
 Wait for the agent to finish. Capture its summary.
 

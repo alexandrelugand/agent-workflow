@@ -16,7 +16,7 @@ Three rules define the normal feature pipeline, enforced by the tooling — not 
 `Quick Fix` is the explicit, user-requested exception for a small, local,
 well-understood, and easily reversible adjustment with no architectural or
 business impact. The primary agent announces the exact scope, edits directly,
-keeps the diff minimal, and performs a proportionate focused verification. TDD
+keeps the diff minimal, and performs a proportionate focused verification. A subagent review
 and a fresh-context subagent review remain available but are not mandatory.
 
 It is not a shortcut for features or uncertain work. Changes involving shared
@@ -58,7 +58,7 @@ Five framing steps, once per product. Then one cycle per story — one story = o
 | Research | `/ks-research <story>` | The real state of the code within the story's scope | `docs/research/<story>.md` |
 | Design | `/ks-design <story>` | The story's screen, anchored to the design system (autonomous agent, or a brief for an external tool) | `docs/designs/<story>/design.md` + `mockup.html` |
 | Plan | `/ks-plan <story>` | Sequenced, small, verifiable tasks | `docs/plans/<story>.md` |
-| Execute | `/ks-execute <story>` | TDD implementation by the `implementer` subagent | code + tests + commits |
+| Execute | `/ks-execute <story>` | Implementation by the `implementer` subagent | code + tests + commits |
 | Review | `/ks-review <story>` | Anti-hallucination review by the `reviewer` subagent | `docs/reviews/<story>.md` |
 | Ship | `/ks-ship <story>` | PR; merge + deploy per ship strategy (manual by default) | PR opened / feature in production |
 
@@ -82,7 +82,7 @@ Five framing steps, once per product. Then one cycle per story — one story = o
 
 **/ks-plan** — breaks the story into ordered tasks, each one small and verifiable, based on the research. Anticipates touched files and the test strategy, and carries the run's interdicts — what must not change, verifiable by the reviewer. Never produces code. The plan is validated by the user before execution.
 
-**/ks-execute** — delegates the implementation to the `implementer` subagent, which works on the story branch `feature/<id>` (strict TDD: failing test → minimal code → refactor, one single commit for the whole story). Fail-closed: no plan in `docs/plans/<id>.md` — or a plan without `validated: yes` — no execution. The main context has neither Write, nor Edit, nor Bash — it can't code even if it "wanted" to. If a previous review blocked the story, it runs in **fix mode**: the review findings are fed to the implementer and fixed first.
+**/ks-execute** — delegates the implementation to the `implementer` subagent, which works on the story branch `feature/<id>` (the task written as a whole block, its focused suite run, its checkbox ticked; one single commit for the whole story — no red-first ceremony, and a test budget of about 25 per story). Fail-closed: no plan in `docs/plans/<id>.md` — or a plan without `validated: yes` — no execution. The main context has neither Write, nor Edit, nor Bash — it can't code even if it "wanted" to. If a previous review blocked the story, it runs in **fix mode**: the review findings are fed to the implementer and fixed first.
 
 **/ks-review** — delegates the review to the `reviewer` subagent: fresh context, read-only. The reviewer judges the story diff (`git diff <default-branch>...feature/<id>`), runs the test suite itself, verifies every API/import in the diff actually exists, and proves the tests bite by neutralizing the line the story turns on and counting the reds — a guard nothing turns red on is untested, whatever the suite total says. That mutation is temporary and restored before the report is written; it is the single exception to read-only. When the story has a design, it also checks conformity to the design system and to the screen's intent — off-system components or tokens are drift (major by default). Each issue classified critical / major / minor. The report ends with two machine-parsable lines: `Max severity: ...` and `Ship allowed: yes|no`.
 
@@ -125,17 +125,16 @@ Five building blocks:
 
 ### The subagents
 
-- **implementer** (`opus` model, `tdd-skill` preloaded) — implements the plan, task by task, in TDD. Touches neither the architecture nor the rules, adds nothing out of scope.
+- **implementer** (`opus` model) — implements the plan, task by task, under a test budget of about 25 per story. Touches neither the architecture nor the rules, adds nothing out of scope.
 - **reviewer** (`review-antihallu` skill preloaded, read-only apart from the restored mutation of the bite proof) — fresh eyes on code it didn't write. Judges, doesn't fix. Ends by naming what it could NOT verify. A single critical = ship refused.
 - **stories-reviewer** (`stories-review` skill preloaded, read-only, no shell) — reads the breakdown against the PRD perimeter. Reports, never rewrites the stories.
 
-Model policy: the reviewers use `model: inherit` — the review runs with whatever model your session runs. Running on Fable means reviewing with Fable; nothing silently downgrades, and the method doesn't assume you have a specific tier. The implementer is pinned to `opus`: TDD over a full story is the longest, most demanding run of the cycle, and a cheaper tier costs more in round-trips than it saves per token. Change either in `src/agents/*.md`.
+Model policy: the reviewers use `model: inherit` — the review runs with whatever model your session runs. Running on Fable means reviewing with Fable; nothing silently downgrades, and the method doesn't assume you have a specific tier. The implementer is pinned to `opus`: implementing a full story is the longest, most demanding run of the cycle, and a cheaper tier costs more in round-trips than it saves per token. Change either in `src/agents/*.md`.
 
 ### The skills
 
 - `agentic-stories` — breakdown into agent-executable stories (Stories phase)
 - `codebase-analysis` — code archaeology: structure, conventions, patterns (Architecture and Research phases)
-- `tdd-skill` — test-first discipline (preloaded in `implementer`)
 - `review-antihallu` — hallucination detection in generated code (preloaded in `reviewer`)
 - `stories-review` — breakdown defects: perimeter coverage, graveyard leaks, dependency order (preloaded in `stories-reviewer`)
 

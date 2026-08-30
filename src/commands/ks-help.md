@@ -17,7 +17,7 @@ Règle unique : interdit de coder en direct. Chaque feature passe par le pipelin
 6. /ks-research <story>  — explore le contexte réel (code actuel, API, pièges)
 7. /ks-design <story>    — décline l'écran depuis le design system (si UI)
 8. /ks-plan <story>      — éclate la story en tâches
-9. /ks-execute <story>   — code en TDD (subagent isolé)
+9. /ks-execute <story>   — implémente la story (subagent isolé)
 10. /ks-review <story>   — review anti-hallucination + gate
 11. /ks-ship <story>     — ouvre la PR ; merge manuel par défaut (cf. AGENTS.md)
 

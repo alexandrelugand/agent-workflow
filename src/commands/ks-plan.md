@@ -33,6 +33,16 @@ Proceed as follows:
    presentational task may instead name a focused visual/browser check plus
    lint and typecheck; never manufacture a component test merely so every task
    owns one.
+**Cap the plan at ~250 lines.** The decisions table stays whole — it is what stops the
+implementer re-deciding — but the prose around it need not argue twice.
+
+**Test budget: about 25 per story.** A plan that wants more says why, in its test strategy.
+The permission matrix is written ONCE, in the policy test; a service test covers the
+business rule, not the access rule again. No enum exhaustiveness, never the same rule at
+two layers, and no adapter re-asserting a 403. Full rationale in AGENTS.md, "Testing" —
+a batch of eleven stories added 614 tests while seven of them shipped their central
+invariant with no net at all.
+
 3. Anticipate the touched files and the test strategy. Test each invariant at
    the closest valuable layer and avoid proving the same behavior again in
    every caller. Explicitly separate automated behavior tests from visual
