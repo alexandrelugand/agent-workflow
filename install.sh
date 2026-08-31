@@ -22,7 +22,8 @@ set -euo pipefail
 REPO="https://github.com/alexandrelugand/agent-workflow.git"
 
 # --- Résolution du payload (src/) : fichiers locaux, sinon clone (cas curl|bash) ---
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:${0}}")" 2>/dev/null && pwd || true)"
+SELF_DIR="${BASH_SOURCE[0]:-${0}}"
+[ -n "$SELF_DIR" ] && SELF_DIR="$(cd "$(dirname "$SELF_DIR")" 2>/dev/null && pwd)" || true
 if [ -n "${SELF_DIR:-}" ] && [ -f "$SELF_DIR/src/commands/aw-prd.md" ]; then
   SRC="$SELF_DIR/src"
   PAYLOAD_ROOT="$SELF_DIR"
@@ -173,7 +174,7 @@ case "$MODE" in
       cp -R "$SRC/templates" "$CACHE/"
       cp "$SRC/AGENTS.md" "$CACHE/"
       cp "$PAYLOAD_ROOT/install.sh" "$CACHE/install.sh" 2>/dev/null \
-        || cp "${BASH_SOURCE[0]:-$0}" "$CACHE/install.sh" 2>/dev/null || true
+        || cp "${BASH_SOURCE[0]:${0}}" "$CACHE/install.sh" 2>/dev/null || true
     }
     case "$TARGET" in
       claude)
