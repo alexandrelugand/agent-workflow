@@ -1,0 +1,155 @@
+# Integration Configuration for agent-workflow
+# This file centralizes all integration settings for JIRA, GitHub, and Telegram
+
+integrations:
+  enabled: true
+  version: "1.0.0"
+  update_url: "https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh"
+
+  # JIRA Integration
+  # Use this for managing epics, requirements, and tasks in Atlassian JIRA
+  jira:
+    enabled: false
+    api_url: "https://your-domain.atlassian.net"
+    api_token: "${JIRA_API_TOKEN}"
+    email: "${JIRA_EMAIL}"
+    project_key: "PROJ"
+    epic_prefix: "EPIC"
+    requirement_prefix: "REQ"
+    task_prefix: "TASK"
+
+    # JIRA API Configuration
+    api_version: "3"
+    retry_attempts: 3
+    retry_delay: 1000
+
+    # Notification Settings
+    notify_on:
+      epic_created: true
+      requirement_created: true
+      task_created: true
+      task_completed: false
+      review_passed: false
+      review_failed: true
+
+    # Validation
+    validate_before_create: true
+    check_dependencies: true
+
+  # GitHub Integration
+  # Use this for managing issues, pull requests, and branch tracking in GitHub
+  github:
+    enabled: false
+    api_url: "https://api.github.com"
+    personal_access_token: "${GITHUB_TOKEN}"
+    repo: "org/repo"
+    default_branch: "main"
+    issue_prefix: "ISS-"
+
+    # GitHub API Configuration
+    api_version: "2022-11-28"
+    timeout: 30000
+    retry_attempts: 3
+    retry_delay: 1000
+
+    # Branch Configuration
+    branch_prefix: "feature/"
+    branch_protected: false
+    branch_auto_cleanup: true
+
+    # Issue Labels
+    default_labels:
+      - "feature"
+      - "agent-workflow"
+
+    # PR Settings
+    pr_template: "PR-BODY-TEMPLATE.md"
+    pr_title_prefix: "feat:"
+    pr_description_template: "PR-DESCRIPTION-TEMPLATE.md"
+    request_review: true
+    required_reviews: 1
+
+    # Notifications
+    notify_on:
+      issue_created: true
+      branch_created: true
+      pr_created: true
+      pr_merged: false
+      pr_closed: true
+
+    # Webhook Integration (future enhancement)
+    webhooks_enabled: false
+
+  # Telegram Integration
+  # Use this for real-time notifications during pipeline execution
+  telegram:
+    enabled: false
+    bot_token: "${TELEGRAM_BOT_TOKEN}"
+    user_id: "${TELEGRAM_USER_ID}"
+
+    # Event Notifications
+    notify_on:
+      pipeline_started: true
+      phase_completed: false
+      task_progress: true
+      task_completed: true
+      compilation_requested: true
+      compilation_succeeded: false
+      compilation_failed: true
+      code_review_started: false
+      code_review_completed: true
+      code_review_passed: true
+      code_review_failed: true
+      pr_created: true
+      pr_merged: false
+      pr_rejected: true
+      review_passed: false
+      review_failed: true
+      errors_encountered: true
+
+    # Notification Settings
+    max_message_length: 500
+    include_attachments: false
+    format: "markdown"
+
+    # Scheduled Notifications
+    schedule:
+      pipeline_progress: false
+      daily_summary: false
+      weekly_report: false
+
+    # Channels (multiple channels can be configured)
+    channels:
+      - name: "default"
+        user_id: "${TELEGRAM_USER_ID}"
+
+    # Webhook URL for external integrations
+    webhook_url: ""
+
+  # General Configuration
+  logging:
+    enabled: true
+    level: "INFO"
+    log_file: "logs/integration.log"
+    max_file_size: 10485760  # 10 MB
+    max_files: 5
+
+  # Fallback Configuration
+  fallback:
+    enabled: true
+    write_to_docs: true
+    docs_path: "docs/integrations"
+    record_failures: true
+
+  # Security
+  security:
+    verify_ssl: true
+    timeout: 30000
+    allow_insecure: false
+
+  # Metadata
+  metadata:
+    created: "2026-08-31"
+    last_updated: "2026-08-31"
+    provider: "agent-workflow"
+    compatibility: "claude-codex"

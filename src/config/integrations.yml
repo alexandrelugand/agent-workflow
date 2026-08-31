@@ -1,0 +1,33 @@
+# agent-workflow — Integrations Configuration
+# These integrations are optional and can be enabled per project
+
+# JIRA Integration
+jira:
+  enabled: false
+  api_url: "https://your-domain.atlassian.net"
+  api_token: "${JIRA_API_TOKEN}"
+  email: "${JIRA_EMAIL}"
+  project_key: "PROJ"
+  epic_prefix: "EPIC"
+  requirement_prefix: "REQ"
+  task_prefix: "TASK"
+
+# GitHub Integration
+github:
+  enabled: false
+  api_url: "https://api.github.com"
+  personal_access_token: "${GITHUB_TOKEN}"
+  repo: "${GITHUB_REPO}"
+  default_branch: "main"
+  issue_prefix: "ISS"
+
+# Telegram Integration
+telegram:
+  enabled: false
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  user_id: "${TELEGRAM_USER_ID}"
+  notify_on:
+    compile_requests: true
+    task_completed: true
+    pr_created: true
+    review_passed: false

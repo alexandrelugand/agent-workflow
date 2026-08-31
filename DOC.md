@@ -1,13 +1,12 @@
-# killer-saas — Method documentation
+# agent-workflow — Method documentation
 
-A complete agentic pipeline to kill a SaaS with Claude Code: pick a target, cut the 20% that matters, rebuild it on your boilerplate, ship it to production.
-One method = a suite of commands. One principle = no direct coding.
+A complete agentic pipeline for product development with Claude Code: explore ideas, define products, build features — ship with confidence. One method = a suite of commands. One principle = no direct coding.
 
 ## Philosophy
 
 Three rules define the normal feature pipeline, enforced by the tooling — not by discipline:
 
-1. **No direct coding.** No code is written outside the pipeline. `/ks-execute` doesn't have the Write/Edit/Bash tools: the main context *cannot* code, it delegates to the `implementer` subagent. The rule lives in the tooling, not in good intentions.
+1. **No direct coding.** No code is written outside the pipeline. `/aw-execute` doesn't have the Write/Edit/Bash tools: the main context *cannot* code, it delegates to the `implementer` subagent. The rule lives in the tooling, not in good intentions.
 2. **The context that writes never reviews itself.** An agent is blind to its own hallucinations and to its own gaps. Reviews run in fresh-context, read-only subagents — `reviewer` for the code, `stories-reviewer` for the breakdown.
 3. **Fail-closed.** No plan → no execution. A critical issue in review → no ship. Every gate blocks by default; nothing gets forced through.
 
@@ -28,73 +27,80 @@ edits to the same files or targets.
 
 ### Editing the workflow rules
 
-`src/AGENTS.md` is the sole tracked source of truth for shared workflow rules.
-Maintainers edit that file, never the root `AGENTS.md` produced by a local test
+`src/agent-workflow.md` is the sole tracked source of truth for shared workflow rules.
+Maintainers edit that file, never the root `agent-workflow.md` produced by a local test
 installation. Rules must not be copied into `CLAUDE.md`: Claude's project file
-stays a one-line `@AGENTS.md` import so Claude and Codex always read the same
+stays a one-line `@agent-workflow.md` import so Claude and Codex always read the same
 rules.
 
-After changing the workflow, build both targets with `bin/ks-build.mjs` and test
-the relevant installer path. New installs receive `src/AGENTS.md`; updates never
-overwrite a project's existing `AGENTS.md`, so evolved rules must be merged into
-already-installed projects deliberately. Root `AGENTS.md` and `CLAUDE.md` in
+After changing the workflow, build both targets with `bin/aw-build.mjs` and test
+the relevant installer path. New installs receive `src/agent-workflow.md`; updates never
+overwrite a project's existing `agent-workflow.md`, so evolved rules must be merged into
+already-installed projects deliberately. Root `agent-workflow.md` and `CLAUDE.md` in
 this repository are ignored local installation artifacts, not editable sources.
 
 ## The pipeline
 
-Five framing steps, once per product. Then one cycle per story — one story = one branch (`feature/<id>`) = one PR. Every story has an id (`s<number>-<short-slug>`, e.g. `s01-submit-testimonial`) that names every pipeline file and the branch.
+Six framing steps, once per product (brainstorming is optional). Then one cycle per story — one story = one branch (`feature/<id>`) = one PR. Every story has an id (`s<number>-<short-slug>`, e.g. `s01-submit-testimonial`) that names every pipeline file and the branch.
 
-    PRD → User Stories → Stories Review → Architecture → Design System
-    then, per story:
-    Research → Design → Plan → Execute → Review → Ship
+**Optional:** Brainstorming — explore and scope product ideas before diving into detailed planning.
+
+```
+Brainstorming → PRD → User Stories → Stories Review → Architecture → Design System
+then, per story:
+Research → Design → Plan → Execute → Review → Ship
+```
 
 | Step | Command | Role | Output |
 | --- | --- | --- | --- |
-| PRD | `/ks-prd <target>` | The kill frame: target SaaS, kill mode, perimeter — the WHAT and the WHY | `docs/prd.md` |
-| Stories | `/ks-stories` | Breakdown into shippable, agentic-ready slices | `docs/stories.md` |
-| Stories Review | `/ks-stories-review` | Fresh-context review of the breakdown vs the PRD perimeter | `docs/reviews/stories.md` |
-| Architecture | `/ks-architect` | The HOW: stack, conventions, patterns | `docs/architecture.md` + `AGENTS.md` |
-| Design System | `/ks-design-system` | Captures tokens, components, UI patterns — records, never draws | `docs/design-system.md` |
-| Research | `/ks-research <story>` | The real state of the code within the story's scope | `docs/research/<story>.md` |
-| Design | `/ks-design <story>` | The story's screen, anchored to the design system (autonomous agent, or a brief for an external tool) | `docs/designs/<story>/design.md` + `mockup.html` |
-| Plan | `/ks-plan <story>` | Sequenced, small, verifiable tasks | `docs/plans/<story>.md` |
-| Execute | `/ks-execute <story>` | Implementation by the `implementer` subagent | code + tests + commits |
-| Review | `/ks-review <story>` | Anti-hallucination review by the `reviewer` subagent | `docs/reviews/<story>.md` |
-| Ship | `/ks-ship <story>` | PR; merge + deploy per ship strategy (manual by default) | PR opened / feature in production |
+| Brainstorming | `/aw-brainstorming` | Optional — explore concepts and scope product ideas before PRD | `docs/brainstorming.md` |
+| PRD | `/aw-prd <product>` | The framing: product vision, user needs, success criteria, scope — the WHAT and the WHY | `docs/prd.md` |
+| Stories | `/aw-stories` | Breakdown into shippable, agentic-ready slices | `docs/stories.md` |
+| Stories Review | `/aw-stories-review` | Fresh-context review of the breakdown vs the PRD scope | `docs/reviews/stories.md` |
+| Architecture | `/aw-architect` | The HOW: stack, conventions, patterns | `docs/architecture.md` + `agent-workflow.md` |
+| Design System | `/aw-design-system` | Captures tokens, components, UI patterns — records, never draws | `docs/design-system.md` |
+| Research | `/aw-research <story>` | The real state of the code within the story's scope | `docs/research/<story>.md` |
+| Design | `/aw-design <story>` | The story's screen, anchored to the design system (autonomous agent, or a brief for an external tool) | `docs/designs/<story>/design.md` + `mockup.html` |
+| Plan | `/aw-plan <story>` | Sequenced, small, verifiable tasks | `docs/plans/<story>.md` |
+| Execute | `/aw-execute <story>` | Implementation by the `implementer` subagent | code + tests + commits |
+| Review | `/aw-review <story>` | Anti-hallucination review by the `reviewer` subagent | `docs/reviews/<story>.md` |
+| Ship | `/aw-ship <story>` | PR; merge + deploy per ship strategy (manual by default) | PR opened / feature in production |
 
 ### Framing (once per product)
 
-**/ks-prd** — frames the kill by interviewing the user, starting with the killer-saas preamble: which target SaaS, kill mode (internal replacement vs competing product), why kill it, and the perimeter — the 20% core loop that delivers the value, each replicated feature scored for complexity (1-5, heavy features default to the graveyard), the graveyard of explicitly dropped features, and the angle beyond parity. Then the classic frame: need, users, constraints, success criteria (parity on the perimeter + the angle). Nothing is filled without validation. The WHAT and the WHY, never the HOW.
+**/aw-brainstorming** — optional phase 0. Explore and evaluate product concepts, identify the strongest direction, structure it into a concept brief suitable for PRD creation. Output: product concept with vision, target users, differentiators, core features (MVP), success metrics, risk areas, technical constraints, assumptions.
 
-**/ks-stories** — breaks the PRD into agentic-ready user stories (`agentic-stories` skill): each story is an end-to-end shippable slice, with acceptance criteria that can become tests, agentic notes (files involved, traps) — the context a human would infer but an agent must read — and a complexity score (1-5, PRD scale): a 4 flags its risk, a 5 is split before planning.
+**/aw-prd** — frames the product by interviewing the user, starting with the agentic pipeline preamble: which product or feature to build, the vision and goals, the target users and their needs, success criteria (MVP scope + beyond MVP), constraints (technical, business, timeline), and the scope — what we're building and what we're explicitly not building. The WHAT and the WHY, never the HOW. Nothing is filled without validation.
 
-**/ks-stories-review** — reviews the breakdown in a fresh context (`stories-reviewer` subagent, read-only, no shell), against the PRD it came from. It walks the PRD perimeter table first — a core-loop feature covered by no story is the most expensive defect in the pipeline, invisible until ship — then hunts graveyard leaks, technical layers disguised as stories, criteria that can't become tests, broken dependency order, unsplit complexity-5 stories, malformed ids and overlaps. Report ends with `Max severity: ...` and `Stories ready: yes|no`. This is a **soft gate**: it doesn't block mechanically, it is surfaced by `/ks-status` and warned about by `/ks-research`. A bad split costs a markdown edit here, and cycles later.
+**/aw-stories** — breaks the PRD into agentic-ready user stories (`agentic-stories` skill): each story is an end-to-end shippable slice, with acceptance criteria that can become tests, agentic notes (files involved, traps) — the context a human would infer but an agent must read — and a complexity score (1-5, PRD scale): a 4 flags its risk, a 5 is split before planning.
 
-**/ks-architect** — starts by asking whether the project stands on a boilerplate; if none, it proposes: start from ship-saas.now (the ideal fit for a modern fullstack React / Next.js / Drizzle / Better Auth stack), or scaffold a classic default — Next.js + Tailwind + shadcn/ui — recorded as an ADR and then analyzed like any boilerplate. Then analyzes the starting code (`codebase-analysis` skill): actual structure, conventions and patterns of the boilerplate. Fills the architecture doc and injects the concrete conventions into `AGENTS.md`. The boilerplate is imposed: conform to it, don't rewrite it.
+**/aw-stories-review** — reviews the breakdown in a fresh context (`stories-reviewer` subagent, read-only, no shell), against the PRD it came from. It walks the PRD scope table first — a feature covered by no story is the most expensive defect in the pipeline, invisible until ship — then hunts excluded leaks, technical layers disguised as stories, criteria that can't become tests, broken dependency order, unsplit complexity-5 stories, malformed ids and overlaps. Report ends with `Max severity: ...` and `Stories ready: yes|no`. This is a **soft gate**: it doesn't block mechanically, it is surfaced by `/aw-status` and warned about by `/aw-research`. A bad split costs a markdown edit here, and cycles later.
 
-**/ks-design-system** — captures the global design system into `docs/design-system.md`: tokens, available components (inventoried from the boilerplate), imposed UI patterns, do/don't. It records and structures — it never invents visuals: the direction comes from the user (whichever design tool produced it) or from the boilerplate's existing system. Fail-closed: no source, no design system. Like `AGENTS.md` and the ADRs, it's a transverse asset: set once, read at every story.
+**/aw-architect** — starts by asking whether the project stands on a boilerplate; if none, it proposes: start from a modern default (React + Next.js + Tailwind + shadcn/ui), or scaffold a custom stack. Then analyzes the starting code (`codebase-analysis` skill): actual structure, conventions and patterns of the boilerplate. Fills the architecture doc and injects the concrete conventions into `agent-workflow.md`. The boilerplate is imposed: conform to it, don't rewrite it.
+
+**/aw-design-system** — captures the global design system into `docs/design-system.md`: tokens, available components (inventoried from the boilerplate), imposed UI patterns, do/don't. It records and structures — it never invents visuals: the direction comes from the user (whichever design tool produced it) or from the boilerplate's existing system. Fail-closed: no source, no design system. Like `agent-workflow.md` and the ADRs, it's a transverse asset: set once, read at every story.
 
 ### Cycle (per story)
 
-**/ks-research** — explores the story's real scope before any planning: files involved in their current state, verified APIs and functions (exact name, signature, location), traps and dependencies. It checks the story's PREMISE, not just that the things it names exist — a function that exists and throws on the story's case invalidates it — and re-scores the story's complexity now that the code has been read, with a split proposal when the verdict is 5. Framing docs go stale as soon as story 2 ships; research anchors the plan in today's code, not day one's. It is anti-hallucination applied upstream: the review detects, the research prevents.
+**/aw-research** — explores the story's real scope before any planning: files involved in their current state, verified APIs and functions (exact name, signature, location), traps and dependencies. It checks the story's PREMISE, not just that the things it names exist — a function that exists and throws on the story's case invalidates it — and re-scores the story's complexity now that the code has been read, with a split proposal when the verdict is 5. Framing docs go stale as soon as story 2 ships; research anchors the plan in today's code, not day one's. It is anti-hallucination applied upstream: the review detects, the research prevents.
 
-**/ks-design** — derives the story's screen from the design system. Fail-closed: no `docs/design-system.md`, no design. Two paths, and the mode is **resolved** rather than asked whenever it can be, so autonomy is never blocked by a question: the **autonomous** path — the agent generates the screen itself, directly or through an internal design skill — or the **brief** path, where the agent writes a self-contained brief (`docs/designs/<id>/brief.md`: screens, exact fields, states, design-system constraints copied in), an external tool produces the screens, and the agent captures the result. Neither tool nor skill is prescribed. Fidelity is **finished**, not low-fi: the design system exists, so there is no visual direction left to explore — every state, light and dark, desktop and mobile. Whichever path produced it, the mockup is then **rendered and looked at** — browser, both themes, both widths, contrast measured — and that step sends you back rather than ticking a box; it applies to a mockup brought back from an external tool too. Needs the system doesn't cover become "design system gaps" — recorded, never invented. The mockup is a reference, never pasted into production: Execute builds the screen with the boilerplate's real components. Stories without UI skip this step.
+**/aw-design** — derives the story's screen from the design system. Fail-closed: no `docs/design-system.md`, no design. Two paths, and the mode is **resolved** rather than asked whenever it can be, so autonomy is never blocked by a question: the **autonomous** path — the agent generates the screen itself, directly or through an internal design skill — or the **brief** path, where the agent writes a self-contained brief (`docs/designs/<id>/brief.md`: screens, exact fields, states, design-system constraints copied in), an external tool produces the screens, and the agent captures the result. Neither tool nor skill is prescribed. Fidelity is **finished**, not low-fi: the design system exists, so there is no visual direction left to explore — every state, light and dark, desktop and mobile. Whichever path produced it, the mockup is then **rendered and looked at** — browser, both themes, both widths, contrast measured — and that step sends you back rather than ticking a box; it applies to a mockup brought back from an external tool too. Needs the system doesn't cover become "design system gaps" — recorded, never invented. The mockup is a reference, never pasted into production: Execute builds the screen with the boilerplate's real components. Stories without UI skip this step.
 
-**/ks-plan** — breaks the story into ordered tasks, each one small and verifiable, based on the research. Anticipates touched files and the test strategy, and carries the run's interdicts — what must not change, verifiable by the reviewer. Never produces code. The plan is validated by the user before execution.
+**/aw-plan** — breaks the story into ordered tasks, each one small and verifiable, based on the research. Anticipates touched files and the test strategy, and carries the run's interdicts — what must not change, verifiable by the reviewer. Never produces code. The plan is validated by the user before execution.
 
-**/ks-execute** — delegates the implementation to the `implementer` subagent, which works on the story branch `feature/<id>` (the task written as a whole block, its focused suite run, its checkbox ticked; one single commit for the whole story — no red-first ceremony, and a test budget of about 25 per story). Fail-closed: no plan in `docs/plans/<id>.md` — or a plan without `validated: yes` — no execution. The main context has neither Write, nor Edit, nor Bash — it can't code even if it "wanted" to. If a previous review blocked the story, it runs in **fix mode**: the review findings are fed to the implementer and fixed first.
+**/aw-execute** — delegates the implementation to the `implementer` subagent, which works on the story branch `feature/<id>` (the task written as a whole block, its focused suite run, its checkbox ticked; one single commit for the whole story — no red-first ceremony, and a test budget of about 25 per story). Fail-closed: no plan in `docs/plans/<id>.md` — or a plan without `validated: yes` — no execution. The main context has neither Write, nor Edit, nor Bash — it can't code even if it "wanted" to. If a previous review blocked the story, it runs in **fix mode**: the review findings are fed to the implementer and fixed first.
 
-**/ks-review** — delegates the review to the `reviewer` subagent: fresh context, read-only. The reviewer judges the story diff (`git diff <default-branch>...feature/<id>`), runs the test suite itself, verifies every API/import in the diff actually exists, and proves the tests bite by neutralizing the line the story turns on and counting the reds — a guard nothing turns red on is untested, whatever the suite total says. That mutation is temporary and restored before the report is written; it is the single exception to read-only. When the story has a design, it also checks conformity to the design system and to the screen's intent — off-system components or tokens are drift (major by default). Each issue classified critical / major / minor. The report ends with two machine-parsable lines: `Max severity: ...` and `Ship allowed: yes|no`.
+**/aw-review** — delegates the review to the `reviewer` subagent: fresh context, read-only. The reviewer judges the story diff (`git diff <default-branch>...feature/<id>`), runs the test suite itself, verifies every API/import in the diff actually exists, and proves the tests bite by neutralizing the line the story turns on and counting the reds — a guard nothing turns red on is untested, whatever the suite total says. That mutation is temporary and restored before the report is written; it is the single exception to read-only. When the story has a design, it also checks conformity to the design system and to the screen's intent — off-system components or tokens are drift (major by default). Each issue classified critical / major / minor. The report ends with two machine-parsable lines: `Max severity: ...` and `Ship allowed: yes|no`.
 
-**/ks-ship** — starts with the mechanical gate: `grep '^Ship allowed: yes' docs/reviews/<id>.md` — no file or a `no` verdict stops everything. Then verifies tests on the branch, pushes, opens a clean PR with the review verdict in its body — and follows the project's **ship strategy** (AGENTS.md): `manual`, the default, stops there — merging stays a human decision; `auto` merges, deploys and confirms it's live. After a PROVEN merge — `git merge-base --is-ancestor`, never a promise — and only then, it deletes the story branch, local and remote: the content is in the default branch, the audit trail in the merged PR. In manual mode: merge on GitHub, then rerun `/ks-ship <id>` to confirm the deployment and clean up.
+**/aw-ship** — starts with the mechanical gate: `grep '^Ship allowed: yes' docs/reviews/<id>.md` — no file or a `no` verdict stops everything. Then verifies tests on the branch, pushes, opens a clean PR with the review verdict in its body — and follows the project's **ship strategy** (`agent-workflow.md`): `manual`, the default, stops there — merging stays a human decision; `auto` merges, deploys and confirms it's live. After a PROVEN merge — `git merge-base --is-ancestor`, never a promise — and only then, it deletes the story branch, local and remote: the content is in the default branch, the audit trail in the merged PR. In manual mode: merge on GitHub, then rerun `/aw-ship <id>` to confirm the deployment and clean up.
 
 ### Utilities
 
-**/ks-orchestrator <story>** — the conductor. It chains one story's full cycle (Research → Design → Plan → Execute → Review → Ship) in a single command so you don't drive six commands by hand. What it does NOT do: replace the method. Each phase follows the exact contract of its standalone command, code and review stay delegated to the same subagents, and it stops on two blocking questions (real AskUserQuestion calls, not sentences): **validate the plan** — recorded as `validated: yes` in the plan's frontmatter, an existing file never counts as validated — and **confirm the ship**. The review gate loops back to fix mode at most twice, then stops with the open findings. Use it when the cycle is routine; use the individual commands when you want to inspect or steer a phase. It cannot validate a plan or ship in your place — and it is fail-closed on framing: no PRD, stories or architecture → it stops and points to the missing step instead of improvising.
+**/aw-orchestrator <story>** — the conductor. It chains one story's full cycle (Research → Design → Plan → Execute → Review → Ship) in a single command so you don't drive six commands by hand. What it does NOT do: replace the method. Each phase follows the exact contract of its standalone command, code and review stay delegated to the same subagents, and it stops on two blocking questions (real AskUserQuestion calls, not sentences): **validate the plan** — recorded as `validated: yes` in the plan's frontmatter, an existing file never counts as validated — and **confirm the ship**. The review gate loops back to fix mode at most twice, then stops with the open findings. Use it when the cycle is routine; use the individual commands when you want to inspect or steer a phase. It cannot validate a plan or ship in your place — and it is fail-closed on framing: no PRD, stories or architecture → it stops and points to the missing step instead of improvising.
 
-**/ks-help** — prints the pipeline map: the phases in order, the single rule, the per-story cycle. Written in French — it's the user-facing cheat sheet for the community. User-invoked only (`disable-model-invocation: true`).
+**/aw-help** — prints the pipeline map: the phases in order, the single rule, the per-story cycle. Written in French — it's the user-facing cheat sheet for the community. User-invoked only (`disable-model-invocation: true`).
 
-**/ks-status** — derives the project's state from the files: framing docs, and per story — complexity, research, design, plan (draft or validated), checkbox progress (x/y), review verdict, PR/merge state, dependency blocks — then prints the next useful command per story and for the project. Nothing is stored: the files are the state.
+**/aw-status** — derives the project's state from the files: framing docs, and per story — complexity, research, design, plan (draft or validated), checkbox progress (x/y), review verdict, PR/merge state, dependency blocks — then prints the next useful command per story and for the project. Nothing is stored: the files are the state.
 
 ## Data & storage
 
@@ -102,32 +108,33 @@ Everything the pipeline produces is markdown under `docs/`, versioned by git. No
 
 | Data | Lives in |
 | --- | --- |
-| PRD, stories, architecture | `docs/prd.md`, `docs/stories.md`, `docs/architecture.md` |
+| Brainstorming, PRD, stories, architecture | `docs/brainstorming.md`, `docs/prd.md`, `docs/stories.md`, `docs/architecture.md` |
 | Research, plan, review (per story) | `docs/research/<id>.md`, `docs/plans/<id>.md`, `docs/reviews/<id>.md` |
 | Tasks + progress | checkboxes inside `docs/plans/<id>.md`, ticked commit by commit |
 | Decisions | `docs/decisions/NNN-<slug>.md` — MADR-style ADRs: context, options rejected and why, consequences. Immutable, superseded not edited |
 | Design | `docs/design-system.md` (global, transverse) ; `docs/designs/<id>/design.md` + `.html` per story — the mockup is a reference, never production code |
 | Pipeline state | derived — file existence + `Ship allowed:` verdict + git. Never stored, so never stale |
 
-Lifecycle: framing docs are committed on the default branch at the end of their phase. Story docs travel with the story — the implementer's first commit on `feature/<id>` brings the research, the design and the plan, each task commit ticks its checkbox, `/ks-ship` commits the review. Every PR therefore carries its own research, design, plan and review: the audit trail is the PR itself. Structural decisions get an ADR in `docs/decisions/`: framing ADRs commit on the default branch, story ADRs travel with their PR.
+Lifecycle: framing docs are committed on the default branch at the end of their phase. Story docs travel with the story — the implementer's first commit on `feature/<id>` brings the research, the design and the plan, each task commit ticks its checkbox, `/aw-ship` commits the review. Every PR therefore carries its own research, design, plan and review: the audit trail is the PR itself. Structural decisions get an ADR in `docs/decisions/`: framing ADRs commit on the default branch, story ADRs travel with their PR.
 
 ## Tooling anatomy
 
-Five building blocks:
+Six building blocks:
 
 | Block | Location | Role |
 | --- | --- | --- |
-| Commands | `.claude/commands/ks-*.md` | The process — each pipeline step is a command |
-| Skills | `.claude/skills/` | The know-how — reusable, auto-invocable |
-| Agents | `.claude/agents/` | Isolated execution — separate contexts, restricted tools |
-| Templates | `templates/` | The deliverables' structure — every doc has an imposed skeleton |
-| Rules | `AGENTS.md` (+ `CLAUDE.md` → `@AGENTS.md`) | The law of the repo — pipeline, conventions, DoD, gate |
+| Commands | `src/commands/aw-*.md` | The process — each pipeline step is a command |
+| Skills | `src/skills/` | The know-how — reusable, auto-invocable |
+| Agents | `src/agents/` | Isolated execution — separate contexts, restricted tools |
+| Templates | `src/templates/` | The deliverables' structure — every doc has an imposed skeleton |
+| Rules | `src/agent-workflow.md` (+ `CLAUDE.md` → `@agent-workflow.md`) | The law of the repo — pipeline, conventions, DoD, gate |
+| Documentation | `src/docs/` | Method documentation and reference |
 
 ### The subagents
 
 - **implementer** (`opus` model) — implements the plan, task by task, under a test budget of about 25 per story. Touches neither the architecture nor the rules, adds nothing out of scope.
 - **reviewer** (`review-antihallu` skill preloaded, read-only apart from the restored mutation of the bite proof) — fresh eyes on code it didn't write. Judges, doesn't fix. Ends by naming what it could NOT verify. A single critical = ship refused.
-- **stories-reviewer** (`stories-review` skill preloaded, read-only, no shell) — reads the breakdown against the PRD perimeter. Reports, never rewrites the stories.
+- **stories-reviewer** (`stories-review` skill preloaded, read-only, no shell) — reads the breakdown against the PRD scope. Reports, never rewrites the stories.
 
 Model policy: the reviewers use `model: inherit` — the review runs with whatever model your session runs. Running on Fable means reviewing with Fable; nothing silently downgrades, and the method doesn't assume you have a specific tier. The implementer is pinned to `opus`: implementing a full story is the longest, most demanding run of the cycle, and a cheaper tier costs more in round-trips than it saves per token. Change either in `src/agents/*.md`.
 
@@ -136,13 +143,14 @@ Model policy: the reviewers use `model: inherit` — the review runs with whatev
 - `agentic-stories` — breakdown into agent-executable stories (Stories phase)
 - `codebase-analysis` — code archaeology: structure, conventions, patterns (Architecture and Research phases)
 - `review-antihallu` — hallucination detection in generated code (preloaded in `reviewer`)
-- `stories-review` — breakdown defects: perimeter coverage, graveyard leaks, dependency order (preloaded in `stories-reviewer`)
+- `stories-review` — breakdown defects: scope coverage, excluded leaks, dependency order (preloaded in `stories-reviewer`)
+- `brainstorming` — concept exploration and structuring (Brainstorming phase, optional)
 
 ## The gate
 
-The review returns a verdict written to `docs/reviews/<id>.md`, ending with the exact lines `Max severity: ...` and `Ship allowed: yes|no`. The gate is mechanical, not declarative: `/ks-ship` greps that line and refuses to run without a `yes` — the verdict file is the key, not anyone's judgment call.
+The review returns a verdict written to `docs/reviews/<id>.md`, ending with the exact lines `Max severity: ...` and `Ship allowed: yes|no`. The gate is mechanical, not declarative: `/aw-ship` greps that line and refuses to run without a `yes` — the verdict file is the key, not anyone's judgment call.
 
-- **Critical** → `Ship allowed: no` → ship blocked. Fix via `/ks-execute` (fix mode: the findings are fixed first), then a new `/ks-review`. No exceptions.
+- **Critical** → `Ship allowed: no` → ship blocked. Fix via `/aw-execute` (fix mode: the findings are fixed first), then a new `/aw-review`. No exceptions.
 - Major / minor → ship allowed, issues to address in a next cycle.
 
 Upstream, plan validation works the same way: the checkpoint is a blocking question whose answer is written into the plan file (`validated: yes`), and Execute — standalone or orchestrated — refuses to run without it. A plan file that merely exists is not a validated plan.
@@ -150,7 +158,7 @@ Upstream, plan validation works the same way: the checkpoint is a blocking quest
 ## Definition of Done (per feature)
 
 - Single PR, structured description, readable diff
-- Passing tests on business logic
+- Passing tests on core features
 - No regression on existing code
 - Review passed (no open critical issue)
 - Deployed to production
@@ -161,29 +169,29 @@ The installer always targets the directory you run it from — your project's ro
 
 | Mode | From your project's root | Effect |
 | --- | --- | --- |
-| Project (default) | `curl -fsSL https://raw.githubusercontent.com/MikeCodeur/killer-saas/main/install.sh \| bash` — or `<clone>/install.sh` | `.claude/` + `templates/` + `AGENTS.md`/`CLAUDE.md` in the current project |
-| Global | `<clone>/install.sh --global` | Tooling in `~/.claude` (commands everywhere), payload in `~/.claude/killer-saas` |
-| Per project, after global | `~/.claude/killer-saas/install.sh init` | Drops templates + rules in the current project |
-| Update | `<clone>/install.sh update` — or the one-liner with `-s -- update` | Cleanly replaces the method's tooling (manifest-tracked, no ghosts, your own commands untouched), refreshes unmodified templates (modified ones are warned about, never overwritten — add `--force` to overwrite them too), stamps `.claude/.ks-version`. `AGENTS.md` is never touched |
+| Project (default) | `curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh \| bash` — or `<clone>/install.sh` | `.claude/` + `templates/` + `agent-workflow.md`/`CLAUDE.md` in the current project |
+| Global | `<clone>/install.sh --global` | Tooling in `~/.claude` (commands everywhere), payload in `~/.claude/agent-workflow` |
+| Per project, after global | `~/.claude/agent-workflow/install.sh init` | Drops templates + rules in the current project |
+| Update | `<clone>/install.sh update` — or the one-liner with `-s -- update` | Cleanly replaces the method's tooling (manifest-tracked, no ghosts, your own commands untouched), refreshes unmodified templates (modified ones are warned about, never overwritten — add `--force` to overwrite them too), stamps `.claude/.aw-version`. `agent-workflow.md` is never touched |
 
-`CLAUDE.md` is not shipped: the installer creates it (or appends to it) with `@AGENTS.md`, so Claude Code loads the rules.
+`CLAUDE.md` is not shipped: the installer creates it (or appends to it) with `@agent-workflow.md`, so Claude Code loads the rules.
 
 ## Multi-tool support (Claude Code / Codex / Gemini)
 
-One canonical source (`src/`, Claude-shaped, the richest target), one installer, per-tool emission — no forked copies. `./install.sh --target claude|codex|all`, project or global scope, drives a per-tool adapter; the Codex transform runs through a zero-dependency Node build (`bin/ks-build.mjs`). What ports and what degrades:
+One canonical source (`src/`, Claude-shaped, the richest target), one installer, per-tool emission — no forked copies. `./install.sh --target claude|codex|all`, project or global scope, drives a per-tool adapter; the Codex transform runs through a zero-dependency Node build (`bin/aw-build.mjs`). What ports and what degrades:
 
 | Building block | Claude Code | Codex | Gemini CLI (planned) |
 | --- | --- | --- | --- |
-| Rules (`AGENTS.md`) | native (+`CLAUDE.md` import) | **native** | `GEMINI.md` shim importing it |
+| Rules (`agent-workflow.md`) | native (+`CLAUDE.md` import) | **native** | `GEMINI.md` shim importing it |
 | Skills (`SKILL.md`) | native | **native** (same open standard) | inlined (no skills mechanism) |
 | Templates | copied | copied | copied |
-| Commands (`ks-*`) | `.claude/commands/*.md` | emitted as `.codex/skills/*` | `.gemini/commands/*.toml` |
+| Commands (`aw-*`) | `src/commands/*.md` | emitted as `.codex/skills/*` | `.gemini/commands/*.toml` |
 | File/grep gates (`validated:`, `Ship allowed:`) | ✅ | ✅ | ✅ |
 | "No direct coding" via tool permissions | ✅ mechanical | ~ agent sandbox (coarser) | ✗ prose-only |
 | Subagent model routing (sonnet/opus) | ✅ | note only | note only |
 | `AskUserQuestion` checkpoints | ✅ structured | prose | prose |
 
-**The honest line:** the file-based gates (a story needs a `validated: yes` plan before code, a `Ship allowed: yes` review before merge) port to every tool because they are shell-on-markdown, not tool permissions. The permission/isolation guarantees are Claude-mechanical and degrade elsewhere. Rather than pretend otherwise, killer-saas moves enforcement into the **repo**:
+**The honest line:** the file-based gates (a story needs a `validated: yes` plan before code, a `Ship allowed: yes` review before merge) port to every tool because they are shell-on-markdown, not tool permissions. The permission/isolation guarantees are Claude-mechanical and degrade elsewhere. Rather than pretend otherwise, agent-workflow moves enforcement into the **repo**:
 
 ### Repo-level enforcement (`--hooks`)
 
@@ -192,8 +200,8 @@ Opt-in git hooks (installed via `core.hooksPath`, reversible) enforce the gates 
 - **pre-commit** — no code on `feature/<id>` without `docs/plans/<id>.md` → `validated: yes` (docs-only commits pass).
 - **pre-push** — no default-branch push when a merged story lacks `docs/reviews/<id>.md` → `Ship allowed: yes`.
 
-So "no code without a validated plan" and "no ship without a passed review" hold on Claude, Codex and Gemini alike — enforcement lives in the repo, not the harness. For PR merges on the platform, the same `ks-gate ship-allowed <id>` check belongs in CI / branch protection.
+So "no code without a validated plan" and "no ship without a passed review" hold on Claude, Codex and Gemini alike — enforcement lives in the repo, not the harness. For PR merges on the platform, the same `aw-gate ship-allowed <id>` check belongs in CI / branch protection.
 
 ## v0 status
 
-The structure is public, the valuable content is private. The `<< IP Mike >>` zones (boilerplate conventions, story granularity, anti-hallucination heuristics, severity thresholds) are intentionally empty in this version: they receive the proprietary content outside this repo.
+The structure is public, the valuable content is private. The `<< IP >>` zones (boilerplate conventions, story granularity, anti-hallucination heuristics, severity thresholds, quick fix mode details) are intentionally empty in this version: they receive the proprietary content outside this repo. The framework is now generic and applicable to any project type — not just SaaS — with the addition of the Brainstorming phase.

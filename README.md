@@ -1,20 +1,20 @@
-# killer-saas
+# agent-workflow
 
-A complete agentic pipeline to kill a SaaS: pick a target, cut the 20% that matters, rebuild it on your boilerplate, ship it to production.
-One method = a suite of commands. One principle = no direct coding.
+A complete agentic pipeline for product development: explore ideas, define products, build features — ship with confidence. One method = a suite of commands. One principle = no direct coding.
 
 Small presentation or copy adjustments can use the explicit **Quick Fix**
 exception when the user requests it. The primary agent edits directly, keeps the
 scope narrow, and verifies the result. If the impact is architectural, business,
 cross-cutting, or uncertain, the normal pipeline remains mandatory. See
-[DOC.md](DOC.md#quick-fix-mode) for the complete boundary.
+[agent-workflow.md](agent-workflow.md#quick-fix-mode) for the complete boundary.
 
 ## Pipeline
-PRD → User Stories → Stories Review → Architecture + Design System → then, per story: Research → Design → Plan → Execute → Review → Ship
 
-![killer-saas pipeline overview](docs/images/pipeline-overview-dark.png)
+Brainstorming → PRD → User Stories → Stories Review → Architecture + Design System → then, per story: Research → Design → Plan → Execute → Review → Ship
 
-Full method documentation: [DOC.md](DOC.md)
+![agent-workflow pipeline overview](docs/images/pipeline-overview-dark.png)
+
+Full method documentation: [agent-workflow.md](agent-workflow.md)
 
 ### Framing — once per product
 ![Framing phase](docs/images/framing-dark.png)
@@ -32,25 +32,25 @@ root (the script fetches the repo itself).
 **Claude Code:**
 
     cd your-project
-    curl -fsSL https://raw.githubusercontent.com/MikeCodeur/killer-saas/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh | bash
 
 **Codex:**
 
     cd your-project
-    curl -fsSL https://raw.githubusercontent.com/MikeCodeur/killer-saas/main/install.sh | bash -s -- --target codex
+    curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh | bash -s -- --target codex
 
 To install the Codex skills globally instead:
 
-    curl -fsSL https://raw.githubusercontent.com/MikeCodeur/killer-saas/main/install.sh | bash -s -- --global --target codex
+    curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh | bash -s -- --global --target codex
 
 The Codex target requires Node.js and installs the skills in `.codex/skills`
 for a project install or `~/.codex/skills` for a global install.
 
 Prefer to read before you run? Clone the repo somewhere, then run the script from your project's root:
 
-    git clone https://github.com/MikeCodeur/killer-saas.git ~/tools/killer-saas
+    git clone https://github.com/alexandrelugand/agent-workflow.git ~/tools/agent-workflow
     cd your-project
-    ~/tools/killer-saas/install.sh
+    ~/tools/agent-workflow/install.sh
 
 ### Targets and scopes
 
@@ -65,15 +65,15 @@ One source of truth, one installer, per-tool output. Pick a **target** with `--t
 
 After a global install, drop the per-project files (templates + rules) in each project:
 
-    ~/.claude/killer-saas/install.sh init                 # Claude
-    ~/.claude/killer-saas/install.sh init --target codex  # Codex
+    ~/.claude/agent-workflow/install.sh init                 # Claude
+    ~/.claude/agent-workflow/install.sh init --target codex  # Codex
 
-`AGENTS.md` (the rules) is shared and read natively by both tools; on Claude a one-line `CLAUDE.md` imports it. The 4 skills are the open `SKILL.md` standard, so they carry over unchanged; the 13 `ks-*` commands are emitted as Codex skills. Gemini CLI is planned next — see the fidelity matrix in [DOC.md](DOC.md).
+`agent-workflow.md` (the rules) is shared and read natively by both tools; on Claude a one-line `CLAUDE.md` imports it. The 4 skills are the open `SKILL.md` standard, so they carry over unchanged; the 15 `aw-*` commands are emitted as Codex skills. Gemini CLI is planned next — see the fidelity matrix in [agent-workflow.md](agent-workflow.md).
 
-When maintaining killer-saas itself, edit only `src/AGENTS.md`. The root
-`AGENTS.md` and `CLAUDE.md` are ignored local-install artifacts; `CLAUDE.md`
-must remain a one-line `@AGENTS.md` import. See
-[Editing the workflow rules](DOC.md#editing-the-workflow-rules).
+When maintaining agent-workflow itself, edit only `src/agent-workflow.md`. The root
+`agent-workflow.md` and `CLAUDE.md` are ignored local-install artifacts; `CLAUDE.md`
+must remain a one-line `@agent-workflow.md` import. See
+[Editing the workflow rules](agent-workflow.md#editing-the-workflow-rules).
 
 ### Repo-level enforcement (git hooks)
 
@@ -90,51 +90,60 @@ Reversible: `git config --unset core.hooksPath`. On Claude the harness also enfo
 
 From your project's root:
 
-    ~/tools/killer-saas/install.sh update              # Claude
-    ~/tools/killer-saas/install.sh update --target codex   # Codex
+    ~/tools/agent-workflow/install.sh update              # Claude
+    ~/tools/agent-workflow/install.sh update --target codex   # Codex
     # or, without a clone:
-    curl -fsSL https://raw.githubusercontent.com/MikeCodeur/killer-saas/main/install.sh | bash -s -- update
+    curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh | bash -s -- update
     # overwrite locally modified templates too:
-    curl -fsSL https://raw.githubusercontent.com/MikeCodeur/killer-saas/main/install.sh | bash -s -- update --force
+    curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh | bash -s -- update --force
 
 What it does — and doesn't:
-- Cleanly replaces the method's tooling, tracked per target in `.ks-manifest` (`.claude/` or `.codex/` — your own commands/skills are never touched, renamed or removed files leave no ghosts).
+- Cleanly replaces the method's tooling, tracked per target in `.aw-manifest` (`.claude/` or `.codex/` — your own commands/skills are never touched, renamed or removed files leave no ghosts).
 - Refreshes the templates you haven't modified; a locally modified template is never overwritten (you get a warning instead — add `--force` to overwrite).
-- Stamps the installed version in `.ks-version`.
-- Never touches `AGENTS.md`: if the method's rules evolved, merge by hand.
+- Stamps the installed version in `.aw-version`.
+- Never touches `agent-workflow.md`: if the method's rules evolved, merge by hand.
 
 ## Usage
 
-    /ks-prd <target-saas>
-    /ks-stories
-    /ks-stories-review
-    /ks-architect
-    /ks-design-system
+    /aw-prd <product-name>
+    /aw-stories
+    /aw-stories-review
+    /aw-architect
+    /aw-design-system
     # then, per story:
-    /ks-research <story>
-    /ks-design <story>
-    /ks-plan <story>
-    /ks-execute <story>
-    /ks-review <story>
-    /ks-ship <story>
+    /aw-research <story>
+    /aw-design <story>
+    /aw-plan <story>
+    /aw-execute <story>
+    /aw-review <story>
+    /aw-ship <story>
+    /aw-brainstorming
 
     # or run a story's full cycle (with human checkpoints):
-    /ks-orchestrator <story>
+    /aw-orchestrator <story>
 
     # where does the project stand?
-    /ks-status
+    /aw-status
 
     # lost? pipeline map (français) :
-    /ks-help
+    /aw-help
 
-On **Codex**, the same steps run as skills (e.g. `ks-prd`, `ks-execute`) — same order, same gates. The git hooks (`--hooks`) enforce the pipeline the same way on both tools.
+On **Codex**, the same steps run as skills (e.g. `aw-prd`, `aw-execute`) — same order, same gates. The git hooks (`--hooks`) enforce the pipeline the same way on both tools.
 
 ## Autonomous mode — `/goal`
 
-`/goal` is a native Claude Code command (not a killer-saas one): you state an outcome, it figures out how to reach it — planning the work, spawning parallel agents, and finding the best sequence itself. Point it at the killer-saas commands and it drives the whole backlog for you.
+`/goal` is a native Claude Code command (not an agent-workflow one): you state an outcome, it figures out how to reach it — planning the work, spawning parallel agents, and finding the best sequence itself. Point it at the agent-workflow commands and it drives the whole backlog for you.
 
     /goal All user stories planned, reviewed and executed.
     Start a dynamic workflow with multiple parallel agents to implement
     the user stories (find the best sequence).
 
-It reads `docs/stories.md`, respects the dependency order, and fans out `/ks-research → … → /ks-review` across independent stories in parallel — while the method's gates still hold: no execution without a validated plan, no ship past an open critical. Use it to go wide once the framing (PRD, stories, architecture, design system) is done; use the individual `/ks-*` commands when you want to drive one story by hand.
+It reads `docs/stories.md`, respects the dependency order, and fans out `/aw-research → … → /aw-review` across independent stories in parallel — while the method's gates still hold: no execution without a validated plan, no ship past an open critical. Use it to go wide once the framing (PRD, stories, architecture, design system) is done; use the individual `/aw-*` commands when you want to drive one story by hand.
+
+## Repository
+
+**GitHub**: https://github.com/alexandrelugand/agent-workflow
+
+**License**: MIT
+
+**Maintainer**: Alexandre Lugand

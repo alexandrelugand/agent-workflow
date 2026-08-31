@@ -1,6 +1,6 @@
 ---
 name: worktree-manager
-description: Creates and verifies the dedicated worktree for one killer-saas story. Invoked before Research.
+description: Creates and verifies the dedicated worktree for one agent-workflow story. Invoked before Research.
 tools: Read, Bash, Glob
 model: inherit
 ---

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# killer-saas — installed via core.hooksPath. Blocks code commits without a validated plan.
+# agent-workflow — installed via core.hooksPath. Blocks code commits without a validated plan.
 set -euo pipefail
-exec "$(dirname "$0")/ks-gate.sh" pre-commit
+exec "$(dirname "$0")/aw-gate.sh" pre-commit

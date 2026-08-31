@@ -1,17 +1,17 @@
 ---
 name: stories-review
-description: Reviews a user-story breakdown against the PRD perimeter — coverage gaps, graveyard leaks, technical-layer stories, untestable criteria, dependency order. Preloaded in the stories-reviewer subagent.
+description: Reviews a user-story breakdown against the PRD scope — coverage gaps, excluded leaks, technical-layer stories, untestable criteria, dependency order. Preloaded in the stories-reviewer subagent.
 ---
 # Story breakdown review
 
-A breakdown looks fine until you check it against the perimeter it came from. This review hunts the gap between what the PRD promised and what the stories actually deliver.
+A breakdown looks fine until you check it against the scope it came from. This review hunts the gap between what the PRD promised and what the stories actually deliver.
 
 Why it runs here: a defect in `docs/stories.md` costs a markdown edit now, and contaminates research, design, plan, code, review and ship for every story derived from it later.
 
 ## Checks, in order
 
-1. **Perimeter coverage** — every feature in the PRD's "Replicated (core loop)" table must be delivered by at least one story. Walk the table, not the stories: it is the only way to see what is *missing*. A silently dropped feature is invisible until ship.
-2. **Graveyard leak** — nothing from "Explicitly NOT replicated" comes back as a story. That list exists to kill scope creep; a leak defeats the PRD.
+1. **Scope coverage** — every feature in the PRD's "In-scope (core loop)" table must be delivered by at least one story. Walk the table, not the stories: it is the only way to see what is *missing*. A silently dropped feature is invisible until ship.
+2. **Graveyard leak** — nothing from "Excluded" comes back as a story. That list exists to kill scope creep; a leak defeats the PRD.
 3. **Technical layers disguised as stories** — "set up the database", "create the API layer". No end-to-end user value, nothing testable, unshippable alone. The table gets created *inside* the story that needs it.
 4. **Untestable acceptance criteria** — each criterion must be able to become a test. "The form works" is not a criterion; "submitting a valid form shows a confirmation and persists the entry" is.
 5. **Dependency order** — no cycle, no forward reference (a story assuming work scheduled after it). The order must be executable top to bottom.
@@ -21,12 +21,12 @@ Why it runs here: a defect in `docs/stories.md` costs a markdown edit now, and c
 
 ## Severity scale
 
-- **critical** — the product would be incomplete or out of scope: an uncovered perimeter feature, a graveyard leak, an impossible dependency order.
+- **critical** — the product would be incomplete or out of scope: an uncovered scope feature, a excluded leak, an impossible dependency order.
 - **major** — a real defect in one story: technical layer, untestable criteria, an unsplit 5, duplicated id, two stories overlapping.
 - **minor** — wording, id style, a missing agentic note, a 4 whose risk isn't spelled out.
 
 ## What this review is NOT
 
-Not an implementation review. How a story will be built belongs to `/ks-research` and `/ks-plan`. Judge the breakdown, not the future code — and never rewrite the stories: report, the human fixes.
+Not an implementation review. How a story will be built belongs to `/aw-research` and `/aw-plan`. Judge the breakdown, not the future code — and never rewrite the stories: report, the human fixes.
 
 << IP Mike: real splitting heuristics, examples of breakdowns that failed in production, coverage thresholds. >>

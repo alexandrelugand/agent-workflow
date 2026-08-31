@@ -1,38 +1,38 @@
 # PRD — <product name>
 
-## Target SaaS
-<which SaaS we're killing — name, URL, what it does in one line>
+## Target
+<which project we're developing — name, URL, what it does in one line>
 
-## Kill mode
-<internal replacement (stop paying, own the data, fit our workflow) | competing product (sell it) — and what that implies for scope>
+## Development approach
+<greenfield (start from scratch) | extend existing | integrate components | replace current solution> — and what that implies for scope>
 
-## Why kill it
-<what it costs, what it does badly for us, what we don't need from it>
+## Project context
+<what we need, current gaps, why we're building this now>
 
-## Problem
+## Problem or need
 What need, for whom, why now.
 
 ## Target users
-Profiles, usage context. (Internal replacement: the actual team. Competitor: the segment.)
+Profiles, usage context.
 
-## Perimeter — the 20% that matters
-### Replicated (core loop)
+## Scope — prioritized features
+### In-scope (core functionality)
 | Feature | Complexity (1-5) | Why this score |
 |---|---|---|
 | <feature> | <n> | <...> |
 
-Scale: 1 trivial CRUD · 2 form + persistence + list · 3 business logic / several states · 4 integrations, payments, roles · 5 real-time, migrations, external systems. A 5 is a graveyard candidate — keep it only if it IS the core value.
+Scale: 1 trivial operations · 2 form + persistence + list · 3 core features / several states · 4 integrations, permissions · 5 live features, data migrations, external services. A 5 is a high-risk — keep it only if it's the core value proposition.
 
-### Explicitly NOT replicated (graveyard)
-<what we deliberately drop — be exhaustive, this list kills scope creep>
+### Excluded features
+<what we deliberately drop — be exhaustive, this list prevents scope creep>
 
-### The angle (done differently / better)
-<where we beat the target, beyond parity>
+### Differentiators
+<where we do things differently or better than existing solutions>
 
 ## Constraints
 Technical, time, dependencies.
 
 ## Success criteria
-<parity checklist on the perimeter + the angle. Measurable.>
+<success checklist for the scope + the differentiators. Measurable.>
 
 << IP Mike: filling guidelines, framing questions, examples. >>

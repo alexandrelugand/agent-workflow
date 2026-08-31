@@ -1,10 +1,10 @@
 # Local install for testing the method in this repo — source of truth is src/
 .claude/
 .codex/
-.killer-saas/
-.ks-hooks/
-/templates/
-/AGENTS.md
+.templates/
+.agent-workflow/
+.aw-hooks/
+/agent-workflow.md
 /CLAUDE.md
 
 .DS_Store

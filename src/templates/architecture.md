@@ -13,7 +13,7 @@
 <entities, relations>
 
 ## Integration points
-<auth, payments, emails, external services>
+<auth, integrations, emails, external services>
 
 ## Design / UX
 <flows, key screens — handled in parallel if relevant>

@@ -2,16 +2,16 @@
 
 > Fresh-context review of `docs/stories.md` against `docs/prd.md`. Each issue classified: critical / major / minor.
 
-## Perimeter coverage
+## Scope coverage
 | PRD feature (core loop) | Covered by | OK? |
 |---|---|---|
 | <feature> | <story id> | ✅ / ❌ |
 
-- [ ] Every feature of the PRD "Replicated (core loop)" table is delivered by at least one story
+- [ ] Every feature of the PRD "In-scope (core loop)" table is delivered by at least one story
 
 ## Scope
-- [ ] No story reintroduces an item from the PRD graveyard ("Explicitly NOT replicated")
-- [ ] No story goes beyond the perimeter
+- [ ] No story reintroduces an item from the PRD excluded ("Excluded")
+- [ ] No story goes beyond the scope
 
 ## Story quality
 - [ ] Each story is an end-to-end shippable slice, not a technical layer

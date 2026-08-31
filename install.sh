@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# killer-saas installer
+# agent-workflow installer
 #
 # Usage :
 #   ./install.sh                       Projet (défaut), cible Claude Code
@@ -17,26 +17,26 @@ set -euo pipefail
 #
 # Deux portées, pour chaque cible : projet (dans le repo courant) ou global (--global).
 #
-# curl -fsSL https://raw.githubusercontent.com/MikeCodeur/killer-saas/main/install.sh | bash
+# curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh | bash
 
-REPO="https://github.com/MikeCodeur/killer-saas.git"
+REPO="https://github.com/alexandrelugand/agent-workflow.git"
 
 # --- Résolution du payload (src/) : fichiers locaux, sinon clone (cas curl|bash) ---
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
-if [ -n "${SELF_DIR:-}" ] && [ -f "$SELF_DIR/src/commands/ks-prd.md" ]; then
+if [ -n "${SELF_DIR:-}" ] && [ -f "$SELF_DIR/src/commands/aw-prd.md" ]; then
   SRC="$SELF_DIR/src"
   PAYLOAD_ROOT="$SELF_DIR"
 else
   TMP="$(mktemp -d)"
-  echo "→ Récupération de killer-saas…"
+  echo "→ Récupération de agent-workflow…"
   git clone --depth 1 "$REPO" "$TMP" >/dev/null 2>&1
   SRC="$TMP/src"
   PAYLOAD_ROOT="$TMP"
 fi
 
 VERSION="$(git -C "$PAYLOAD_ROOT" rev-parse --short HEAD 2>/dev/null || date +%Y-%m-%d)"
-CACHE="$HOME/.claude/killer-saas"
-ORIG="./.killer-saas/templates.orig"   # baseline templates (tool-neutral), for local-edit detection
+CACHE="$HOME/.claude/agent-workflow"
+ORIG="./.agent-workflow/templates.orig"   # baseline templates (tool-neutral), for local-edit detection
 
 # --- Arguments : mode + --target + --hooks + --force ---
 FORCE=0; HOOKS=0; TARGET="claude"; MODE=""
@@ -51,15 +51,15 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Supprime les fichiers posés par une install précédente (listés dans .ks-manifest) — jamais rien d'autre.
+# Supprime les fichiers posés par une install précédente (listés dans .aw-manifest) — jamais rien d'autre.
 clean_tooling() {
   local dest="$1" line
-  [ -f "$dest/.ks-manifest" ] || return 0
+  [ -f "$dest/.aw-manifest" ] || return 0
   while IFS= read -r line; do
     case "$line" in
       commands/*|skills/*|agents/*|prompts/*) rm -rf "$dest/$line" ;;
     esac
-  done < "$dest/.ks-manifest"
+  done < "$dest/.aw-manifest"
 }
 
 # Claude : copie verbatim (pas de build, pas de Node — chemin quotidien).
@@ -70,11 +70,11 @@ copy_tooling_claude() {
   cp -R "$SRC/commands/." "$dest/commands/"
   cp -R "$SRC/skills/."   "$dest/skills/"
   cp -R "$SRC/agents/."   "$dest/agents/"
-  : > "$dest/.ks-manifest"
-  for f in "$SRC/commands/"*.md; do echo "commands/$(basename "$f")" >> "$dest/.ks-manifest"; done
-  for f in "$SRC/skills/"*/;     do echo "skills/$(basename "$f")"   >> "$dest/.ks-manifest"; done
-  for f in "$SRC/agents/"*.md;   do echo "agents/$(basename "$f")"   >> "$dest/.ks-manifest"; done
-  echo "$VERSION" > "$dest/.ks-version"
+  : > "$dest/.aw-manifest"
+  for f in "$SRC/commands/"*.md; do echo "commands/$(basename "$f")" >> "$dest/.aw-manifest"; done
+  for f in "$SRC/skills/"*/;     do echo "skills/$(basename "$f")"   >> "$dest/.aw-manifest"; done
+  for f in "$SRC/agents/"*.md;   do echo "agents/$(basename "$f")"   >> "$dest/.aw-manifest"; done
+  echo "$VERSION" > "$dest/.aw-version"
 }
 
 # Codex : transforme via le build Node → .codex/skills.
@@ -82,13 +82,13 @@ copy_tooling_codex() {
   local dest="$1" stg d
   command -v node >/dev/null 2>&1 || { echo "✗ Node requis pour la cible codex (build md→skills)." >&2; return 1; }
   stg="$(mktemp -d)"
-  node "$PAYLOAD_ROOT/bin/ks-build.mjs" --target codex --src "$SRC" --out "$stg" >/dev/null
+  node "$PAYLOAD_ROOT/bin/aw-build.mjs" --target codex --src "$SRC" --out "$stg" >/dev/null
   clean_tooling "$dest"
   mkdir -p "$dest"
   cp -R "$stg/." "$dest/"
-  : > "$dest/.ks-manifest"
-  for d in "$dest/skills/"*/; do echo "skills/$(basename "$d")" >> "$dest/.ks-manifest"; done
-  echo "$VERSION" > "$dest/.ks-version"
+  : > "$dest/.aw-manifest"
+  for d in "$dest/skills/"*/; do echo "skills/$(basename "$d")" >> "$dest/.aw-manifest"; done
+  echo "$VERSION" > "$dest/.aw-version"
   rm -rf "$stg"
 }
 
@@ -117,7 +117,7 @@ sync_templates() {
 drop_agents_md() {
   local payload="$1"
   if [ -f ./AGENTS.md ]; then
-    echo "⚠  ./AGENTS.md existe déjà — non écrasé. Fusionne les rules killer-saas à la main si besoin."
+    echo "⚠  ./AGENTS.md existe déjà — non écrasé. Fusionne les rules de agent-workflow à la main si besoin."
   else
     cp "$payload/AGENTS.md" ./AGENTS.md
   fi
@@ -134,11 +134,11 @@ wire_claude_md() {
 install_hooks() {
   command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1 || {
     echo "⚠  Pas un repo git — hooks non posés. (git init puis ./install.sh --hooks)"; return 0; }
-  mkdir -p ./.ks-hooks
-  cp "$SRC/hooks/ks-gate.sh" "$SRC/hooks/pre-commit" "$SRC/hooks/pre-push" ./.ks-hooks/
-  chmod +x ./.ks-hooks/ks-gate.sh ./.ks-hooks/pre-commit ./.ks-hooks/pre-push
-  git config core.hooksPath .ks-hooks
-  echo "✅ Git hooks posés (core.hooksPath=.ks-hooks). Gates : pas de code sans plan validé, pas de ship sans review."
+  mkdir -p ./.aw-hooks
+  cp "$SRC/hooks/aw-gate.sh" "$SRC/hooks/pre-commit" "$SRC/hooks/pre-push" ./.aw-hooks/
+  chmod +x ./.aw-hooks/aw-gate.sh ./.aw-hooks/pre-commit ./.aw-hooks/pre-push
+  git config core.hooksPath .aw-hooks
+  echo "✅ Git hooks posés (core.hooksPath=.aw-hooks). Gates : pas de code sans plan validé, pas de ship sans review."
   echo "   Désactiver : git config --unset core.hooksPath"
 }
 
@@ -147,11 +147,11 @@ install_target() {
     claude)
       copy_tooling_claude "./.claude"
       sync_templates "$SRC"; drop_agents_md "$SRC"; wire_claude_md
-      echo "✅ killer-saas installé (Claude, projet, version $VERSION). Commandes : /ks-prd … /ks-ship" ;;
+      echo "✅ agent-workflow installé (Claude, projet, version $VERSION). Commandes : /aw-prd … /aw-ship" ;;
     codex)
       copy_tooling_codex "./.codex"
       sync_templates "$SRC"; drop_agents_md "$SRC"   # AGENTS.md natif Codex, pas de CLAUDE.md
-      echo "✅ killer-saas installé (Codex, projet, version $VERSION). Skills : ks-prd … ks-ship dans .codex/skills." ;;
+      echo "✅ agent-workflow installé (Codex, projet, version $VERSION). Skills : aw-prd … aw-ship dans .codex/skills." ;;
     all)
       install_target claude
       install_target codex ;;
@@ -187,7 +187,7 @@ case "$MODE" in
         echo "✅ Tooling installé (global Claude + Codex, version $VERSION)." ;;
       *) echo "Cible inconnue : $TARGET (claude|codex|all)" >&2; exit 1 ;;
     esac
-    echo "→ Dans chaque projet : ~/.claude/killer-saas/install.sh init [--target codex] [--hooks]"
+    echo "→ Dans chaque projet : ~/.claude/agent-workflow/install.sh init [--target codex] [--hooks]"
     ;;
 
   init)
@@ -200,7 +200,7 @@ case "$MODE" in
 
   update)
     install_target "$TARGET"
-    echo "✅ killer-saas mis à jour ($TARGET, version $VERSION). AGENTS.md jamais touché — fusionne à la main si les rules ont évolué."
+    echo "✅ agent-workflow mis à jour ($TARGET, version $VERSION). AGENTS.md jamais touché — fusionne à la main si les rules ont évolué."
     if [ "$HOOKS" = 1 ]; then install_hooks; fi
     ;;
 

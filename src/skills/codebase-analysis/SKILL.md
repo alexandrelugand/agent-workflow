@@ -1,6 +1,6 @@
 ---
 name: codebase-analysis
-description: Analyzes existing code you didn't write — structure, conventions, patterns. Use during the Architecture and Research phases of the killer-saas pipeline, and for boilerplate onboarding.
+description: Analyzes existing code you didn't write — structure, conventions, patterns. Use during the Architecture and Research phases of the agent-workflow pipeline, and for boilerplate onboarding.
 ---
 # Codebase analysis
 

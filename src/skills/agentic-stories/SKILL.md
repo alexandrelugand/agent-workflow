@@ -1,6 +1,6 @@
 ---
 name: agentic-stories
-description: Breaks a need or a PRD down into user stories an agent can execute. Use during the Stories phase of the killer-saas pipeline.
+description: Breaks a need or a PRD down into user stories an agent can execute. Use during the Stories phase of the agent-workflow pipeline.
 ---
 # Agentic-ready story breakdown
 
@@ -12,8 +12,8 @@ Principles:
 - Agentic notes: the files involved, the constraints, the known traps — the context a human would infer but an agent must read.
 - Explicit dependencies: order the stories so that none assumes work not yet done.
 - Size: implementable in one Research → Design → Plan → Execute → Review → Ship cycle. If the plan would exceed roughly ten tasks, the story is too big: split it.
-- Complexity score: rate each story 1-5 (same scale as the PRD perimeter). A 4 must call out its risk in the agentic notes; a 5 never stays one story — split it before it reaches /ks-plan.
-- Target as spec (killer-saas): when the PRD names a target SaaS, point each story to the target's equivalent flow or screen in the agentic notes — the reference implementation already runs in production. Never turn anything from the PRD's graveyard (explicitly not replicated) into a story.
+- Complexity score: rate each story 1-5 (same scale as the PRD scope). A 4 must call out its risk in the agentic notes; a 5 never stays one story — split it before it reaches /aw-plan.
+- Target as reference: when the PRD names a target project, point each story to the target's equivalent flow or screen in the agentic notes — the reference implementation provides guidance. Never turn anything from the PRD's excluded (explicitly not developed) into a story.
 - Id: every story gets `s<number>-<short-slug>` (e.g. s01-submit-testimonial), reused verbatim in every pipeline file and in the branch name.
 
 Example — bad vs good:

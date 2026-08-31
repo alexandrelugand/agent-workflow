@@ -25,7 +25,7 @@
 ## Real complexity
 <the story is scored N in docs/stories.md — a score given before anyone opened a file.
  Yours is given after: N, and why they differ if they do. A verdict of 5 carries a split
- proposal below; /ks-plan will not have better facts than you have here.>
+ proposal below; /aw-plan will not have better facts than you have here.>
 
 ## Split proposal
 <required when the verdict is 5, optional otherwise: two or three stories, the cut line,

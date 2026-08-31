@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements a planned story in an isolated context. Invoked by /ks-execute.
+description: Implements a planned story in an isolated context. Invoked by /aw-execute.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 ---

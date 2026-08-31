@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Anti-hallucination review of the implementer's work, fresh context, read-only. Invoked by /ks-review.
+description: Anti-hallucination review of the implementer's work, fresh context, read-only. Invoked by /aw-review.
 tools: Read, Grep, Glob, Bash, Edit
 model: inherit
 skills:
