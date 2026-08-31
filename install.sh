@@ -22,7 +22,7 @@ set -euo pipefail
 REPO="https://github.com/alexandrelugand/agent-workflow.git"
 
 # --- Résolution du payload (src/) : fichiers locaux, sinon clone (cas curl|bash) ---
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:${0}}")" 2>/dev/null && pwd || true)"
 if [ -n "${SELF_DIR:-}" ] && [ -f "$SELF_DIR/src/commands/aw-prd.md" ]; then
   SRC="$SELF_DIR/src"
   PAYLOAD_ROOT="$SELF_DIR"
