@@ -46,6 +46,8 @@ Before editing, verify that no other agent owns the base directory. If another
 agent is working there, coordinate ownership or stop; never overlap edits.
 
 ## Pipeline (commands)
+
+- `/aw-brain`      Initial project brainstorming - explore and scope ideas for a new product or feature
 - `/aw-prd`        frames the project: target, development approach, scope (WHAT + WHY)
 - `/aw-stories`    breaks it down into shippable user stories
 - `/aw-stories-review`  reviews the breakdown against the PRD scope (stories-reviewer subagent)
@@ -59,6 +61,7 @@ agent is working there, coordinate ownership or stop; never overlap edits.
 - `/aw-ship`       opens the PR; merge/deploy per the ship strategy (manual by default)
 
 Utilities:
+
 - `/aw-orchestrator`  runs a story's full cycle with human checkpoints (plan validation, ship confirmation)
 - `/aw-help`          prints the pipeline map (French, user-facing cheat sheet)
 - `/aw-status`        derives the project's pipeline state from the files (framing, per-story progress, next command)

@@ -78,6 +78,7 @@ telegram:
 Creates JIRA tickets for stories, features, and tasks.
 
 **Usage**:
+
 ```
 # Integrate with PRD stories
 /aw-integrate-jira
@@ -87,6 +88,7 @@ Creates JIRA tickets for stories, features, and tasks.
 ```
 
 **What it does**:
+
 - Creates Epic tickets for PRD stories
 - Creates Requirement tickets for architecture features
 - Creates Task tickets for development tasks
@@ -94,6 +96,7 @@ Creates JIRA tickets for stories, features, and tasks.
 - Updates story/feature/task files with ticket IDs
 
 **Output**:
+
 - `docs/prd.md` with JIRA Epic IDs
 - `docs/features/` with JIRA Requirement IDs
 - `docs/tasks/` with JIRA Task IDs
@@ -106,6 +109,7 @@ Creates JIRA tickets for stories, features, and tasks.
 Creates GitHub issues and pull requests.
 
 **Usage**:
+
 ```
 # Setup GitHub integration
 /aw-integrate-github
@@ -115,6 +119,7 @@ Creates GitHub issues and pull requests.
 ```
 
 **What it does**:
+
 - Creates GitHub issues for stories and features
 - Creates feature branches (`feature/<story-id>`)
 - Creates pull requests with structured descriptions
@@ -122,6 +127,7 @@ Creates GitHub issues and pull requests.
 - Comments on issues with PR links
 
 **Output**:
+
 - `docs/prd.md` with GitHub issue IDs
 - `docs/features/` and `docs/tasks/` with issue IDs
 - `.github/pull-requests/` summary
@@ -136,6 +142,7 @@ Creates GitHub issues and pull requests.
 Handles JIRA ticket creation and management.
 
 **Features**:
+
 - Create Epics, Requirements, Tasks
 - Link tickets hierarchically
 - Update story files with JIRA IDs
@@ -151,6 +158,7 @@ Called automatically by `/aw-integrate-jira` command.
 Handles GitHub issue and PR creation.
 
 **Features**:
+
 - Create GitHub issues for stories
 - Create feature branches
 - Create structured PRs with test results
@@ -166,6 +174,7 @@ Called automatically by `/aw-integrate-github` command.
 Sends real-time notifications.
 
 **Features**:
+
 - Compilation request notifications
 - Task progress updates
 - Code review results
@@ -173,6 +182,7 @@ Sends real-time notifications.
 - Task completion summaries
 
 **Events**:
+
 - `compile_requests` — When compilation is needed
 - `task_completed` — When task finishes
 - `pr_created` — When PR is created
@@ -180,6 +190,7 @@ Sends real-time notifications.
 
 **Usage**:
 Called automatically by pipeline commands:
+
 - `/aw-execute` — Task progress and completion
 - `/aw-review` — Code review results
 - `/aw-ship` — PR creation
@@ -188,11 +199,11 @@ Called automatically by pipeline commands:
 
 ### Recommended Sequence
 
-```
-1. /aw-brainstorming
+```text
+1. /aw-brain
    ↓
 2. /aw-prd
-   ↓
+   ↓  
 3. /aw-integrate-jira        # Create JIRA Epics
    ↓
 4. /aw-stories               # Breakdown stories
@@ -214,7 +225,7 @@ Called automatically by pipeline commands:
 
 ### Integration-Specific Files
 
-```
+```text
 agent-workflow/
 ├── src/
 │   ├── config/

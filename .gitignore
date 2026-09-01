@@ -1,10 +1,12 @@
 # Local install for testing the method in this repo — source of truth is src/
+.vscode/
 .claude/
 .codex/
 .templates/
 .agent-workflow/
 .aw-hooks/
-/agent-workflow.md
+memory/
+/AGENTS.md
 /CLAUDE.md
 
 .DS_Store

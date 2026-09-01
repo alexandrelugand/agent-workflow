@@ -53,7 +53,7 @@ Research → Design → Plan → Execute → Review → Ship
 
 | Step | Command | Role | Output |
 | --- | --- | --- | --- |
-| Brainstorming | `/aw-brainstorming` | Optional — explore concepts and scope product ideas before PRD | `docs/brainstorming.md` |
+| Brainstorming | `/aw-brain` | Optional — explore concepts and scope product ideas before PRD | `docs/brainstorming.md` |
 | PRD | `/aw-prd <product>` | The framing: product vision, user needs, success criteria, scope — the WHAT and the WHY | `docs/prd.md` |
 | Stories | `/aw-stories` | Breakdown into shippable, agentic-ready slices | `docs/stories.md` |
 | Stories Review | `/aw-stories-review` | Fresh-context review of the breakdown vs the PRD scope | `docs/reviews/stories.md` |
@@ -68,7 +68,7 @@ Research → Design → Plan → Execute → Review → Ship
 
 ### Framing (once per product)
 
-**/aw-brainstorming** — optional phase 0. Explore and evaluate product concepts, identify the strongest direction, structure it into a concept brief suitable for PRD creation. Output: product concept with vision, target users, differentiators, core features (MVP), success metrics, risk areas, technical constraints, assumptions.
+**/aw-brain** — optional phase 0. Explore and evaluate product concepts, identify the strongest direction, structure it into a concept brief suitable for PRD creation. Output: product concept with vision, target users, differentiators, core features (MVP), success metrics, risk areas, technical constraints, assumptions.
 
 **/aw-prd** — frames the product by interviewing the user, starting with the agentic pipeline preamble: which product or feature to build, the vision and goals, the target users and their needs, success criteria (MVP scope + beyond MVP), constraints (technical, business, timeline), and the scope — what we're building and what we're explicitly not building. The WHAT and the WHY, never the HOW. Nothing is filled without validation.
 

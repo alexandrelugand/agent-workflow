@@ -6,7 +6,7 @@ Small presentation or copy adjustments can use the explicit **Quick Fix**
 exception when the user requests it. The primary agent edits directly, keeps the
 scope narrow, and verifies the result. If the impact is architectural, business,
 cross-cutting, or uncertain, the normal pipeline remains mandatory. See
-[agent-workflow.md](agent-workflow.md#quick-fix-mode) for the complete boundary.
+[DOC.md](DOC.md#quick-fix-mode) for the complete boundary.
 
 ## Pipeline
 
@@ -14,7 +14,7 @@ Brainstorming → PRD → User Stories → Stories Review → Architecture + Des
 
 ![agent-workflow pipeline overview](docs/images/pipeline-overview-dark.png)
 
-Full method documentation: [agent-workflow.md](agent-workflow.md)
+Full method documentation: [DOC.md](DOC.md)
 
 ### Framing — once per product
 ![Framing phase](docs/images/framing-dark.png)
@@ -68,12 +68,12 @@ After a global install, drop the per-project files (templates + rules) in each p
     ~/.claude/agent-workflow/install.sh init                 # Claude
     ~/.claude/agent-workflow/install.sh init --target codex  # Codex
 
-`agent-workflow.md` (the rules) is shared and read natively by both tools; on Claude a one-line `CLAUDE.md` imports it. The 4 skills are the open `SKILL.md` standard, so they carry over unchanged; the 15 `aw-*` commands are emitted as Codex skills. Gemini CLI is planned next — see the fidelity matrix in [agent-workflow.md](agent-workflow.md).
+`AGENTS.md` (the rules) is shared and read natively by both tools; on Claude a one-line `CLAUDE.md` imports it. The 4 skills are the open `SKILL.md` standard, so they carry over unchanged; the 15 `aw-*` commands are emitted as Codex skills. Gemini CLI is planned next — see the fidelity matrix in [DOC.md](DOC.md).
 
-When maintaining agent-workflow itself, edit only `src/agent-workflow.md`. The root
-`agent-workflow.md` and `CLAUDE.md` are ignored local-install artifacts; `CLAUDE.md`
-must remain a one-line `@agent-workflow.md` import. See
-[Editing the workflow rules](agent-workflow.md#editing-the-workflow-rules).
+When maintaining agent-workflow itself, edit only `src/AGENTS.md`. The root
+`AGENTS.md` and `CLAUDE.md` are ignored local-install artifacts; `CLAUDE.md`
+must remain a one-line `@AGENTS.md` import. See
+[Editing the workflow rules](DOC.md#editing-the-workflow-rules).
 
 ### Repo-level enforcement (git hooks)
 
@@ -98,13 +98,15 @@ From your project's root:
     curl -fsSL https://raw.githubusercontent.com/alexandrelugand/agent-workflow/main/install.sh | bash -s -- update --force
 
 What it does — and doesn't:
+
 - Cleanly replaces the method's tooling, tracked per target in `.aw-manifest` (`.claude/` or `.codex/` — your own commands/skills are never touched, renamed or removed files leave no ghosts).
 - Refreshes the templates you haven't modified; a locally modified template is never overwritten (you get a warning instead — add `--force` to overwrite).
 - Stamps the installed version in `.aw-version`.
-- Never touches `agent-workflow.md`: if the method's rules evolved, merge by hand.
+- Never touches `AGENTS.md`: if the method's rules evolved, merge by hand.
 
 ## Usage
 
+    /aw-brain
     /aw-prd <product-name>
     /aw-stories
     /aw-stories-review
@@ -117,7 +119,6 @@ What it does — and doesn't:
     /aw-execute <story>
     /aw-review <story>
     /aw-ship <story>
-    /aw-brainstorming
 
     # or run a story's full cycle (with human checkpoints):
     /aw-orchestrator <story>

@@ -5,6 +5,7 @@ Cette migration transforme le framework killer-saas en un système générique p
 ## ✅ Travail terminé
 
 ### Phase 1: Renommage du repo et fichiers
+
 - ✅ Créé plan de migration dans `MIGRATION_PLAN.md`
 - ✅ Copié le répertoire killer-saas vers agent-workflow
 - ✅ Renommé les 14 commandes: `aw-*` → `aw-*`
@@ -13,13 +14,15 @@ Cette migration transforme le framework killer-saas en un système générique p
 - ✅ Renommé `README-workflow.md` → `README.md`
 
 ### Phase 2: Ajout Brainstorming (nouvelle phase 0)
-- ✅ Créé `src/commands/aw-brainstorming.md`
+
+- ✅ Créé `src/commands/aw-brain.md`
 - ✅ Créé `src/skills/brainstorming/SKILL.md`
 - ✅ Créé `src/templates/brainstorming.md`
 - ✅ Créé `src/docs/brainstorming.md`
 - ✅ Pipeline mis à jour: Brainstorming → PRD → User Stories → ...
 
 ### Phase 3: Mise à jour du contenu
+
 - ✅ Remplacé "killer-saas" par "agent-workflow" dans tous les fichiers
 - ✅ Remplacé "aw-*" par "aw-*" dans les commandes
 - ✅ Remplacé "SaaS" par "produit" où approprié
@@ -27,29 +30,36 @@ Cette migration transforme le framework killer-saas en un système générique p
 - ✅ Mis à jour `install.sh` avec le nouveau repo URL
 
 ### Phase 4: Scripts et hooks
+
 - ✅ Mis à jour `install.sh` avec nouveau repository: `@alexandrelugand/agent-workflow.git`
 - ✅ Renommé `src/hooks/aw-gate.sh` → `aw-gate.sh`
 - ✅ Renommé `bin/aw-build.mjs` → `aw-build.mjs`
 - ✅ Mis à jour toutes les références internes
 
 ### Phase 5: Documentation
+
 - ✅ Créé `MIGRATION_DONE.md` pour documenter la migration
 
 ## 📊 Fichiers créés
 
 ### Nouveaux fichiers de commandes
-- `src/commands/aw-brainstorming.md` (nouvelle)
+
+- `src/commands/aw-brain.md` (nouvelle)
 
 ### Nouveaux fichiers skills
+
 - `src/skills/brainstorming/SKILL.md`
 
 ### Nouveaux fichiers templates
+
 - `src/templates/brainstorming.md`
 
 ### Nouveaux fichiers docs
+
 - `src/docs/brainstorming.md`
 
 ### Documentation de migration
+
 - `MIGRATION_DONE.md` (ce fichier)
 - `MIGRATION_PLAN.md` (plan détaillé)
 
