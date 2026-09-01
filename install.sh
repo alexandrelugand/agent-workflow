@@ -23,7 +23,6 @@ REPO="https://github.com/alexandrelugand/agent-workflow.git"
 
 # --- Resolve payload (src/) : local files, otherwise clone (curl|bash case) ---
 SELF_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
-echo "${SELF_DIR}"
 if [ -n "${SELF_DIR:-}" ] && [ -f "$SELF_DIR/src/commands/aw-prd.md" ]; then
   SRC="$SELF_DIR/src"
   PAYLOAD_ROOT="$SELF_DIR"
