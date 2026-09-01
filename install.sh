@@ -22,15 +22,13 @@ set -euo pipefail
 REPO="https://github.com/alexandrelugand/agent-workflow.git"
 
 # --- Resolve payload (src/) : local files, otherwise clone (curl|bash case) ---
-SELF_DIR="${BASH_SOURCE[0]:-${0}}"
-if [ -n "$SELF_DIR" ]; then
-  SELF_DIR=$(cd "$(dirname "$SELF_DIR")" 2>/dev/null && pwd) || true
-fi
+SELF_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+echo "${SELF_DIR}"
 if [ -n "${SELF_DIR:-}" ] && [ -f "$SELF_DIR/src/commands/aw-prd.md" ]; then
   SRC="$SELF_DIR/src"
   PAYLOAD_ROOT="$SELF_DIR"
 else
-  TMP=$(mktemp -d)
+  TMP="$(mktemp -d)"
   echo "→ Fetching agent-workflow…"
   git clone --depth 1 "$REPO" "$TMP" >/dev/null 2>&1
   SRC="$TMP/src"
