@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import IntegrationService from './integration-service.mjs';
 
-const jiraConfig = enabled => `integrations:\n  enabled: true\n  jira:\n    enabled: ${enabled}\n    project_key: "DEMO"\n    issue_type: "Story"\n    retry_attempts: 1\n`;
+const jiraConfig = (enabled, extra = '') => `integrations:\n  enabled: true\n  jira:\n    enabled: ${enabled}\n    project_key: "DEMO"\n    issue_type: "Story"\n    browse_base_url: ""\n    retry_attempts: 1\n    retry_delay: 0\n${extra}`;
 const env = { JIRA_API_URL: 'https://example.atlassian.net', JIRA_PROJECT_KEY: 'DEMO', JIRA_EMAIL: 'user@example.test', JIRA_API_TOKEN: 'synthetic-only' };
 function fixture(content) {
   const dir = mkdtempSync(join(tmpdir(), 'aw-jira-'));
@@ -13,6 +13,21 @@ function fixture(content) {
   if (content !== undefined) writeFileSync(path, content);
   return { dir, path, clean: () => rmSync(dir, { recursive: true, force: true }) };
 }
+
+const markerIssues = storyId => [{ key: 'DEMO-1', fields: { labels: [`aw-story-${storyId}`], project: { key: 'DEMO' }, issuetype: { name: 'Story' } } }];
+const jiraResponse = (data, status = 200, headers = new Headers()) => ({ ok: status >= 200 && status < 300, status, headers, json: async () => data });
+const jiraNoBody = (status = 201) => ({ ok: true, status, headers: new Headers() });
+async function activeService(file, fetchImpl, options = {}) {
+  const service = new IntegrationService(file.path, { environment: env, projectRoot: file.dir, fetch: fetchImpl, sleep: options.sleep });
+  await service.init();
+  return service;
+}
+const storyData = {
+  storyId: 's02-jira-import', summary: 'Import selected stories',
+  userStory: 'As a product owner, I can import a selected story.',
+  acceptanceCriteria: ['[x] already done', '[ ] still open'],
+  dependencies: ['s01-jira-setup']
+};
 
 test('missing config initializes with Jira inactive', async () => {
   const file = fixture();
@@ -24,7 +39,7 @@ test('disabled Jira performs no request', async () => {
   try {
     const service = new IntegrationService(file.path, { environment: env, fetch: async () => { calls++; } });
     await service.init();
-    await assert.rejects(service.createJiraTicket('task', { summary: 'disabled' }), /not enabled/);
+    await assert.rejects(service.searchJiraStory('s02-jira-import'), /not enabled/);
     assert.equal(calls, 0);
   }
   finally { file.clean(); }
@@ -34,7 +49,7 @@ test('incomplete Jira performs no request', async () => {
   try {
     const service = new IntegrationService(file.path, { environment: {}, fetch: async () => { calls++; } });
     await service.init();
-    await assert.rejects(service.createJiraTicket('task', { summary: 'incomplete' }), /not enabled/);
+    await assert.rejects(service.searchJiraStory('s02-jira-import'), /not enabled/);
     assert.equal(calls, 0);
   }
   finally { file.clean(); }
@@ -69,7 +84,7 @@ test('Jira errors and captured logs redact request and authorization data', asyn
   try {
     const service = new IntegrationService(file.path, { environment: env, fetch: async () => { throw new Error('synthetic-only Authorization: Basic private'); } });
     await service.init();
-    await assert.rejects(service.createJiraTicket('task', { summary: 'private request payload' }), error => !/synthetic-only|Authorization|private/.test(error.message));
+    await assert.rejects(service.searchJiraStory('s02-jira-import'), error => !/synthetic-only|Authorization|private/.test(error.message));
     assert.doesNotMatch(logs.join('\n'), /synthetic-only|Authorization|private/);
   } finally { console.log = originalLog; file.clean(); }
 });
@@ -92,7 +107,7 @@ test('unapproved Jira host is rejected before authorization can be sent', async 
   try {
     const service = new IntegrationService(file.path, { environment: { ...env, JIRA_API_URL: 'https://attacker.invalid' }, fetch: async () => { calls++; } });
     await service.init();
-    await assert.rejects(service.jiraService.createTicket('task', { summary: 'private' }), /approved HTTPS Jira Cloud/);
+    await assert.rejects(service.searchJiraStory('s02-jira-import'), /approved HTTPS Jira Cloud/);
     assert.equal(calls, 0);
   } finally { file.clean(); }
 });
@@ -102,7 +117,7 @@ test('HTTP Jira status survives sanitized errors', async () => {
   try {
     const service = new IntegrationService(file.path, { environment: env, fetch: async () => ({ ok: false, status: 403, text: async () => 'private-response' }) });
     await service.init();
-    await assert.rejects(service.createJiraTicket('task', { summary: 'private payload' }), error => error.status === 403 && /HTTP 403/.test(error.message) && !/private/.test(error.message));
+    await assert.rejects(service.searchJiraStory('s02-jira-import'), error => error.status === 403 && /HTTP 403/.test(error.message) && !/private/.test(error.message));
   } finally { file.clean(); }
 });
 
@@ -148,7 +163,7 @@ test('global false with an inline comment keeps enabled Jira inactive', async ()
     await service.init();
     assert.equal(service.getIntegrationStatus().enabled, false);
     assert.equal(service.getIntegrationStatus().jira.enabled, false);
-    await assert.rejects(service.createJiraTicket('task', { summary: 'must not send' }), /not enabled/);
+    await assert.rejects(service.searchJiraStory('s02-jira-import'), /not enabled/);
     assert.equal(requests, 0);
   } finally { file.clean(); }
 });
@@ -188,4 +203,190 @@ test('fresh installer config plus documented repo and token creates expected Git
     assert.doesNotMatch(JSON.stringify(service.getIntegrationStatus()), /synthetic-fresh-template-token/);
     assert.doesNotMatch(logs.join('\n'), /synthetic-fresh-template-token|Authorization/);
   } finally { console.log = originalLog; rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('Jira marker search distinguishes zero matches and sends exact enhanced JQL', async () => {
+  const file = fixture(jiraConfig(true));
+  const requests = [];
+  try {
+    const service = await activeService(file, async (url, options) => { requests.push({ url, options }); return jiraResponse({ issues: [], isLast: true }); });
+    assert.deepEqual(await service.searchJiraStory('s02-jira-import'), []);
+    assert.equal(requests[0].url, 'https://example.atlassian.net/rest/api/3/search/jql');
+    assert.deepEqual(JSON.parse(requests[0].options.body), { jql: 'project = "DEMO" AND labels = "aw-story-s02-jira-import"', fields: ['key', 'labels', 'project', 'issuetype'], maxResults: 100 });
+  } finally { file.clean(); }
+});
+
+test('Jira marker search returns one exact label match', async () => {
+  const file = fixture(jiraConfig(true));
+  try {
+    const service = await activeService(file, async () => jiraResponse({ issues: markerIssues('s02-jira-import'), isLast: true }));
+    assert.deepEqual(await service.searchJiraStory('s02-jira-import'), [{ key: 'DEMO-1', projectKey: 'DEMO', issueType: 'Story' }]);
+  } finally { file.clean(); }
+});
+
+test('Jira marker search preserves multiple exact matches for ambiguity handling', async () => {
+  const file = fixture(jiraConfig(true));
+  try {
+    const service = await activeService(file, async () => jiraResponse({ issues: [
+      ...markerIssues('s02-jira-import'), { key: 'DEMO-2', fields: { labels: ['aw-story-s02-jira-import'], project: { key: 'DEMO' }, issuetype: { name: 'Story' } } }
+    ], isLast: true }));
+    assert.deepEqual(await service.searchJiraStory('s02-jira-import'), [
+      { key: 'DEMO-1', projectKey: 'DEMO', issueType: 'Story' }, { key: 'DEMO-2', projectKey: 'DEMO', issueType: 'Story' }
+    ]);
+  } finally { file.clean(); }
+});
+
+test('Jira marker search follows every enhanced JQL page', async () => {
+  const file = fixture(jiraConfig(true));
+  const tokens = [];
+  try {
+    const service = await activeService(file, async (url, options) => {
+      const body = JSON.parse(options.body); tokens.push(body.nextPageToken || null);
+      return body.nextPageToken
+        ? jiraResponse({ issues: markerIssues('s02-jira-import'), isLast: true })
+        : jiraResponse({ issues: [], isLast: false, nextPageToken: 'page-2' });
+    });
+    assert.deepEqual(await service.searchJiraStory('s02-jira-import'), [{ key: 'DEMO-1', projectKey: 'DEMO', issueType: 'Story' }]);
+    assert.deepEqual(tokens, [null, 'page-2']);
+  } finally { file.clean(); }
+});
+
+test('story creation sends configured issue type, ADF, stable label, and optional parent after persisting intent', async () => {
+  const file = fixture(jiraConfig(true, '    epic_key: "DEMO-99"\n'));
+  const requests = [];
+  try {
+    const service = await activeService(file, async (url, options) => {
+      requests.push({ url, options });
+      if (url.endsWith('/search/jql')) return jiraResponse({ issues: [], isLast: true });
+      assert.equal(existsSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json')), true);
+      return jiraResponse({ key: 'DEMO-17' });
+    });
+    assert.deepEqual(await service.createJiraStory(storyData), { key: 'DEMO-17', url: 'https://example.atlassian.net/browse/DEMO-17', created: true });
+    const payload = JSON.parse(requests[1].options.body);
+    assert.equal(requests[1].options.method, 'POST');
+    assert.equal(payload.fields.project.key, 'DEMO');
+    assert.deepEqual(payload.fields.issuetype, { name: 'Story' });
+    assert.equal(payload.fields.summary, storyData.summary);
+    assert.deepEqual(payload.fields.labels, ['aw-story-s02-jira-import']);
+    assert.deepEqual(payload.fields.parent, { key: 'DEMO-99' });
+    assert.equal(payload.fields.description.type, 'doc');
+    assert.equal(payload.fields.description.version, 1);
+    const adf = JSON.stringify(payload.fields.description);
+    assert.match(adf, /already done/);
+    assert.match(adf, /still open/);
+    assert.doesNotMatch(adf, /\[[x ]\]/);
+    assert.match(adf, /s01-jira-setup/);
+  } finally { file.clean(); }
+});
+
+test('permanent Jira create errors are not retried', async () => {
+  const file = fixture(jiraConfig(true, '    retry_attempts: 3\n'));
+  let posts = 0;
+  try {
+    const service = await activeService(file, async url => {
+      if (url.endsWith('/search/jql')) return jiraResponse({ issues: [], isLast: true });
+      posts++;
+      return jiraResponse({ errorMessages: ['private'] }, 400);
+    });
+    await assert.rejects(service.createJiraStory(storyData), /HTTP 400/);
+    assert.equal(posts, 1);
+    assert.equal(existsSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json')), true);
+  } finally { file.clean(); }
+});
+
+test('ambiguous create retains and blocks pending state until explicit resolution', async () => {
+  const file = fixture(jiraConfig(true));
+  let posts = 0;
+  let searches = 0;
+  try {
+    const service = await activeService(file, async url => {
+      if (url.endsWith('/search/jql')) { searches++; return jiraResponse({ issues: [], isLast: true }); }
+      posts++;
+      throw new Error('private network details');
+    });
+    await assert.rejects(service.createJiraStory(storyData), /ambiguous; pending import was retained/);
+    assert.equal(posts, 1);
+    const pending = JSON.parse(readFileSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json'), 'utf8'));
+    assert.deepEqual(Object.keys(pending).sort(), ['createdAt', 'label', 'storyId']);
+    assert.equal(pending.storyId, 's02-jira-import');
+    await assert.rejects(service.createJiraStory(storyData), /unresolved; explicitly resolve/);
+    assert.equal(posts, 1);
+    assert.equal(searches, 3);
+    assert.throws(() => service.resolvePendingJiraImport('s02-jira-import'), /Explicit confirmation is required/);
+    service.resolvePendingJiraImport('s02-jira-import', true);
+    assert.equal(service.hasPendingJiraImport('s02-jira-import'), false);
+  } finally { file.clean(); }
+});
+
+test('ambiguous create recovers exactly one marker match', async () => {
+  const file = fixture(jiraConfig(true));
+  let searches = 0;
+  try {
+    const service = await activeService(file, async url => {
+      if (url.endsWith('/search/jql')) { searches++; return jiraResponse({ issues: searches === 1 ? [] : markerIssues('s02-jira-import'), isLast: true }); }
+      throw new Error('connection closed after request');
+    });
+    assert.deepEqual(await service.createJiraStory(storyData), { key: 'DEMO-1', url: 'https://example.atlassian.net/browse/DEMO-1', reused: true });
+    assert.equal(searches, 2);
+    assert.equal(existsSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json')), true);
+  } finally { file.clean(); }
+});
+
+
+test('Jira 429 retries are bounded, search before retry, and honor Retry-After', async () => {
+  const file = fixture(jiraConfig(true, '    retry_attempts: 2\n'));
+  let posts = 0;
+  let searches = 0;
+  const delays = [];
+  try {
+    const service = await activeService(file, async url => {
+      if (url.endsWith('/search/jql')) { searches++; return jiraResponse({ issues: [], isLast: true }); }
+      posts++;
+      return jiraResponse({}, 429, new Headers({ 'Retry-After': '0' }));
+    }, { sleep: async ms => delays.push(ms) });
+    await assert.rejects(service.createJiraStory(storyData), /rate limit prevented/);
+    assert.equal(posts, 2);
+    assert.equal(searches, 3);
+    assert.deepEqual(delays, [0]);
+  } finally { file.clean(); }
+});
+
+test('dependency link posts the documented Blocks direction', async () => {
+  const file = fixture(jiraConfig(true));
+  const posts = [];
+  try {
+    const service = await activeService(file, async (url, options) => {
+      if (url.endsWith('/issueLinkType')) return jiraResponse({ issueLinkTypes: [{ name: 'Blocks', inward: 'Blocked by', outward: 'Blocks' }] });
+      if (url.includes('/issue/DEMO-10?')) return jiraResponse({ fields: { issuelinks: [] } });
+      posts.push({ url, body: JSON.parse(options.body) });
+      return jiraNoBody();
+    });
+    assert.deepEqual(await service.linkJiraStories('DEMO-10', 'DEMO-20'), { linked: true, created: true });
+    assert.deepEqual(posts[0].body, { type: { name: 'Blocks' }, inwardIssue: { key: 'DEMO-10' }, outwardIssue: { key: 'DEMO-20' } });
+  } finally { file.clean(); }
+});
+
+test('existing Jira dependency link is not created again', async () => {
+  const file = fixture(jiraConfig(true));
+  let posts = 0;
+  try {
+    const service = await activeService(file, async url => {
+      if (url.endsWith('/issueLinkType')) return jiraResponse({ issueLinkTypes: [{ name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }] });
+      if (url.includes('/issue/DEMO-10?')) return jiraResponse({ fields: { issuelinks: [{ type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }, inwardIssue: { key: 'DEMO-20' } }] } });
+      posts++;
+      return jiraResponse(null, 201);
+    });
+    assert.deepEqual(await service.linkJiraStories('DEMO-10', 'DEMO-20'), { linked: true, created: false });
+    assert.equal(posts, 0);
+  } finally { file.clean(); }
+});
+
+test('unavailable or denied Jira dependency linking is reported without a link write', async () => {
+  const file = fixture(jiraConfig(true));
+  try {
+    const unavailable = await activeService(file, async () => jiraResponse({ issueLinkTypes: [] }));
+    assert.deepEqual(await unavailable.linkJiraStories('DEMO-10', 'DEMO-20'), { linked: false, reason: 'Blocks link type is unavailable' });
+    const denied = await activeService(file, async () => jiraResponse({}, 403));
+    assert.deepEqual(await denied.linkJiraStories('DEMO-10', 'DEMO-20'), { linked: false, reason: 'Issue-link permission denied' });
+  } finally { file.clean(); }
 });

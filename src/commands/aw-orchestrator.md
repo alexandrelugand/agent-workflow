@@ -46,13 +46,9 @@ fi
 ```
 
 If `consumer_root` is empty, the optional integration runtime is not installed; skip this phase and continue local work. Otherwise read `"$consumer_root/.agent-workflow/integrations.yaml"` and invoke installed integration commands via `"$consumer_root/.agent-workflow/runtime/"`.
-### JIRA Integration
-If JIRA is enabled in `"$consumer_root/.agent-workflow/integrations.yaml"`:
-1. Read `docs/prd.md` for story details
-2. Create JIRA Epic if needed: `/aw-integrate-jira`
-3. Create JIRA Requirement if needed: `/aw-integrate-jira`
-4. Create JIRA Task if needed: `/aw-integrate-jira`
-5. Update `docs/integrations/<id>.md` with JIRA ticket IDs
+### Jira Integration
+
+Jira setup is optional. Do not import PRD/backlog stories automatically or create Epics, Requirements, Tasks, or placeholder records. After a user explicitly selects full IDs present in the current worktree's `docs/stories.md`, use `/aw-integrate-jira <story-id...>` for a read-only preview and separate confirmation before issue writes. Keep Jira key/URL references only in `docs/integrations/<story-id>.md`.
 
 ### GitHub Integration
 If GitHub is enabled in `"$consumer_root/.agent-workflow/integrations.yaml"`:
@@ -65,7 +61,7 @@ If Telegram is enabled in `"$consumer_root/.agent-workflow/integrations.yaml"`:
 1. Send initialization notification: "🚀 Pipeline started: Story <id> — <story-name>"
 2. Set up event notifications for each phase
 
-**Note**: Integration setup happens automatically via integration service. Manual steps above are for initial setup only.
+**Note**: Integration setup is optional. Jira issues are created only through explicit user-selected import; no Jira issue is initialized automatically.
 
 ## Phase 1 — Research
 If docs/research/<id>.md doesn't exist, produce it now following the aw-research contract: codebase-analysis skill on the story's scope, current state of the code, output structured by @templates/research.md. Otherwise reuse the existing file.
@@ -94,9 +90,6 @@ Delegate to the `reviewer` subagent exactly as /aw-review does: fresh context, s
 - Alert on review passed or failed
 - Notify on critical issues
 
-**JIRA Update** (if enabled):
-- Update JIRA task status (In Progress → Done/Blocked)
-- Add review comments if applicable
 
 Gate: verdict `Ship allowed: no` → go back to Phase 4 in fix mode. Maximum 2 fix loops; still blocked after that → stop and report the open findings. Never soften a verdict to move on.
 
@@ -113,8 +106,5 @@ CHECKPOINT — review passed: show the verdict and ask via AskUserQuestion: "Shi
 - Comment on GitHub issue with PR link
 - Add labels to PR if configured
 
-**JIRA Update** (if enabled):
-- Update JIRA task status to Done
-- Add PR link to ticket description
 
 End with: "Story <id> shipped. Cycle complete." (auto mode), "PR opened — merging is yours." (manual mode) — or the exact blocking state if stopped (which phase, what's missing).

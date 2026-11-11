@@ -1,13 +1,15 @@
 ---
 name: jira-adapter
-description: Create JIRA tickets (Epic, Requirement, Task) for stories and tasks. Integrates agent-workflow with JIRA.
+description: Preview and import explicitly selected stories as one configured Jira issue per story
 ---
 
-# JIRA Adapter Skill
+# Jira Adapter Skill
 
-You create JIRA tickets to track work in agent-workflow. Use during framing and planning phases.
+Jira import is explicit and story-scoped. Never import a PRD or backlog automatically, create placeholders, split a story into Epic/Requirement/Task tickets, transfer checkbox state, or mirror Jira lifecycle status.
 
-Before reading configuration or running validation from a story worktree, resolve the consumer root and installed runtime:
+## Configuration and runtime
+
+Resolve the shared consumer runtime from a story worktree:
 
 ```sh
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
@@ -16,162 +18,40 @@ integration_config="$consumer_root/.agent-workflow/integrations.yaml"
 integration_cli="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
 ```
 
-## Configuration
+Read only secret-free settings from the config. Credentials come from `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in the process environment. Never print or store their values. Jira must remain disabled until `/aw-integrate-configure` validates the site, identity, project, and configured issue type.
 
-Read secret-free Jira settings from `"$integration_config"` (project key, configured issue type, and status names). Credentials are process-environment-only: `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`. Never place credentials in YAML or print them. Before Jira setup work, run `node "$integration_cli" validate`; leave Jira disabled until it succeeds.
+`jira.issue_type` determines the created issue type. Optional `jira.epic_key` names an existing parent and never causes an Epic to be created. A Jira site API URL is enough to build `/browse/<key>`; a scoped API base requires the optional secret-free `jira.browse_base_url` before writes.
 
-## Workflow
+## Explicit import workflow
 
-### Step 1: Create Epic (for PRD)
+1. Require one or more full story IDs explicitly supplied by the user and present in the current worktree's `docs/stories.md`. Never infer or enumerate a selection.
+2. Run a read-only preview using exactly those IDs:
 
-When creating a PRD story breakdown:
+   ```sh
+   node "$integration_cli" preview <story-id...>
+   ```
 
-1. **Read PRD** from `docs/prd.md`
-2. **Extract user stories** — each story becomes an Epic
-3. **Create Epic ticket** with:
-   - Summary: Story title
-   - Description: User story format + acceptance criteria
-   - Labels: #epic, #prd
-   - Component: from story's agentic notes
-4. **Save ticket ID** in `docs/prd.md` as `e_<id>` (e.g., Epic-100)
+   Explain create, reuse, recovery, ambiguous/pending, and dependency-link actions. Preview may search Jira but does not create issues, create issue links, or modify records.
+3. Ask the user to confirm the displayed plan. On cancellation, stop without writes.
+4. After explicit confirmation, run the separate write action:
 
-Example output in `docs/prd.md`:
+   ```sh
+   node "$integration_cli" import <story-id...> --confirm
+   ```
 
-```markdown
-## Stories
+   The CLI rechecks Jira, creates or reuses exactly one configured-type issue per selected story, and writes the local link only after verifying the issue. The ADF description includes the user story, acceptance text without checkbox state, and dependency references. A stable `aw-story-<story-id>` label is used for matching.
+5. Dependencies are linked with Jira's `Blocks` relationship only when both stories have local Jira references; report a missing/denied link separately without losing a successful issue record.
 
-### Story s01 — User authentication
-**As a** user **I want** to login with email/password **so that** I can access my account
-**JIRA Epic**: EPIC-100
+Jira records belong in the current worktree's `docs/integrations/<story-id>.md` and contain only the Jira key and browse URL in the Jira section. Preserve GitHub and all unrelated record data.
 
-### Story s02 — User profile management
-**As a** user **I want** to edit my profile **so that** I can keep information up to date
-**JIRA Epic**: EPIC-101
+## Recovery and manual links
+
+A non-secret pending marker is persisted before any issue create. A possibly accepted create is never blindly retried: the service searches the stable marker, recovers exactly one match, and retains the marker when zero or multiple matches remain. After inspecting Jira and explicitly confirming no issue was created, human resolution is:
+
+```sh
+node "$integration_cli" resolve-pending <story-id> --confirm-not-created
 ```
 
-### Step 2: Create Requirements (for Architecture)
+For one existing Jira issue, `/aw-integrate-link <story-id> <jira-key> jira` validates the project and configured type and refuses to replace a different local key. `/aw-integrate-unlink <story-id> jira` removes only the local Jira section and never deletes the Jira issue.
 
-After architecture phase:
-
-1. **Read features** from `docs/architecture.md` or `docs/features/`
-2. **Create Requirement tickets** (one per feature)
-3. **Link to Epics**: In JIRA, link Requirement → Epic
-4. **Save IDs** in feature files
-
-Example feature file:
-
-```markdown
-# Feature: User Authentication
-
-## JIRA Requirement: REQ-1001
-
-## Description
-Technical implementation of user authentication system
-
-## Architecture
-- JWT-based tokens
-- Password hashing (bcrypt)
-- Session management
-
-## API Endpoints
-- POST /api/auth/login
-- POST /api/auth/register
-- POST /api/auth/logout
-
-## Tests
-- Unit tests for auth logic
-- Integration tests for API endpoints
-```
-
-### Step 3: Create Tasks (for Development)
-
-During design/system design phase:
-
-1. **Read tasks** breakdown
-2. **Create Task tickets** linked to Requirements
-3. **Save IDs** in task files
-
-Example task file:
-
-```markdown
-# Task: Login endpoint implementation
-
-## JIRA Task: TASK-1001
-
-## Dependencies
-- REQ-1001
-
-## Implementation steps
-1. Create login controller
-2. Implement authentication logic
-3. Add input validation
-4. Write unit tests
-5. Write integration tests
-
-## Acceptance Criteria
-- [ ] Login validates credentials
-- [ ] Returns JWT token on success
-- [ ] Returns 401 on failure
-- [ ] Tests pass
-```
-
-## JIRA REST API
-
-Use JIRA REST API v3:
-
-```bash
-# Get project keys
-GET /rest/api/3/project/{projectIdOrKey}
-Authorization: Basic <base64(api_token + ":" + email)>
-
-# Create epic
-POST /rest/api/3/issue
-Body:
-{
-  "fields": {
-    "project": {"key": "PROJ"},
-    "issuetype": {"name": "Epic"},
-    "summary": "User authentication",
-    "description": "...",
-    "labels": ["epic", "#prd"]
-  }
-}
-
-# Get issue key from response
-{"id": "10001", "key": "PROJ-100"}
-```
-
-## Error Handling
-
-If JIRA API fails:
-1. Log error
-2. Continue with markdown tracking
-3. Create fallback ticket in `docs/jira-issues.md`
-4. Note in `docs/notes/jira-integration-failures.md`
-
-## Best Practices
-
-- Always link tasks to their parent requirement
-- Use consistent prefix naming (EPIC, REQ, TASK)
-- Set proper priorities (P0, P1, P2, P3)
-- Link related Epics via JIRA's "Relates to" field
-- Keep descriptions clear and actionable
-
-## Output
-
-Save JIRA ticket information in story/task files for traceability:
-
-```markdown
-## JIRA References
-- Epic: EPIC-100
-- Requirement: REQ-1001
-- Task: TASK-1001
-```
-
-## Verification
-
-After creating tickets:
-1. Verify ticket appears in JIRA project
-2. Check ticket has correct type (Epic/Requirement/Task)
-3. Verify links between parent and child tickets
-4. Confirm labels are applied correctly
+Do not implement status transitions, PR synchronization, Jira status mirroring, or `/aw-ship` behavior here; those belong to the lifecycle story.
