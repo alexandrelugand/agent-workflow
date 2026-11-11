@@ -1,19 +1,43 @@
 # Integration Guide
 
-## Consumer configuration
+Agent-workflow can use Jira, GitHub, and Telegram as optional providers. This guide describes the current Jira contract; GitHub and Telegram configuration remains in their provider adapters.
 
-The sole consumer configuration path is `.agent-workflow/integrations.yaml`. The installer creates it only when absent; it is user-owned and never overwritten or removed by update. `src/config/integrations.yaml` is only the repository source template.
+## Responsibilities
 
-## Optional Jira setup
+- The repository is authoritative for story text, acceptance criteria, research, design, architecture, and delivery decisions.
+- Jira is the operational source for backlog fields. The integration synchronizes lifecycle status and a pull-request link; it does not mirror story text or acceptance criteria back into the repository.
+- One selected story maps to one Jira issue. Acceptance criteria and plan tasks do not become separate issues.
+- Jira is optional. Disabled or incomplete configuration makes no Jira request and does not change local pipeline behavior.
 
-Jira is disabled by default. Keep `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in the process environment or a user-managed secret store, never in YAML or command output. The secret-free settings include `jira.issue_type`, optional `jira.browse_base_url` for scoped API bases, and optional `jira.epic_key` for an existing parent. `/aw-integrate-configure` validates the HTTPS Jira Cloud site, identity, project access, and exact configured issue type; validation never enables Jira.
+## Runtime and configuration
 
-Missing, disabled, or incomplete Jira causes no request and does not mutate ordinary local pipeline behavior. `/aw-integrate-status` returns redacted summaries only; never expose raw provider config, response bodies, request payloads, headers, or secrets.
+The installer places the runtime under `.agent-workflow/runtime/`. The sole consumer configuration is `.agent-workflow/integrations.yaml`; it is user-owned, seeded only when absent, and never overwritten or removed by update. `src/config/integrations.yaml` is the repository's source template, not the consumer config.
+
+Keep these credentials in the invoking process environment or a user-managed secret store, never in YAML, source files, logs, or command output:
+
+- `JIRA_API_URL`
+- `JIRA_PROJECT_KEY`
+- `JIRA_EMAIL`
+- `JIRA_API_TOKEN`
+
+Jira settings such as `issue_type`, optional `epic_key`, and nested `status_names` are secret-free. Run `/aw-integrate-configure` to validate the HTTPS site, identity, project access, and configured issue type. Validation does not enable Jira; enable it only after successful validation. Missing, disabled, or incomplete configuration remains request-free.
 
 ## Explicit story import
 
-Run `/aw-integrate-jira <story-id...>` only after the user selects full story IDs present in the current worktree's `docs/stories.md`. It displays a read-only preview of create/reuse/recovery and dependency-link actions. Ask the user to confirm; only then run the separate `import <story-id...> --confirm` action. Import rechecks Jira and creates or reuses one configured-type issue per selected story. It does not import unrequested stories, infer status from checkboxes, create placeholders, or build an Epic/Requirement/Task hierarchy.
+Run `/aw-integrate-jira <full-story-id...>` only with story IDs explicitly selected by the user and present in the current worktree's `docs/stories.md`. The command previews create, reuse, recovery, and dependency-link actions before any write, then asks for confirmation. Cancellation performs no write. After confirmation, the import rechecks Jira and creates or reuses exactly one configured-type issue per selected story.
 
-Each `docs/integrations/<story-id>.md` stores only the Jira key and browse URL in its Jira section. Other provider data is preserved. Manual Jira link accepts one existing issue per story; unlink removes only the local Jira reference and never deletes the remote issue. Pending-create markers under ignored `.agent-workflow/jira-import-pending/` prevent automatic duplicate creates after ambiguous outcomes; human resolution is required when reconciliation is inconclusive.
+Issues use Jira REST v3 and an Atlassian Document Format description containing the story, acceptance-criterion text, and dependency references, plus the stable `aw-story-<story-id>` label. The import does not infer status from checkboxes, import unrequested or historical stories, create one issue per criterion, or create an Epic/Requirement/Task hierarchy. An existing `jira.epic_key` may be used as an optional parent.
 
-Do not use this story for lifecycle transitions, status mirroring, PR synchronization, or `/aw-ship` behavior; those belong to the later Jira lifecycle story.
+Successful imports store only the Jira key and browse URL in `docs/integrations/<story-id>.md`; unrelated provider data is preserved. `/aw-integrate-link` links one existing issue, and unlink removes only the local Jira reference. Uncertain issue creation is reconciled by its stable marker; unresolved pending creates require human resolution rather than a blind retry.
+
+## Lifecycle and status
+
+`/aw-execute` requests `in_progress` for a linked story. `/aw-review` requests `in_review`; a rejected review may request `blocked` only when that mapping is configured and an applicable transition exists. An open PR remains In Review and receives an idempotent Jira remote link. `/aw-ship` requests Done only after it verifies the PR state is exactly `MERGED`, and updates that same link with the merged outcome.
+
+Transition IDs are discovered from the individual Jira issue. The runtime matches the configured destination exactly against each transition's `to.name` and posts the returned ID. An issue already at the target is a no-op; missing or ambiguous transitions produce a warning instead of a guessed transition.
+
+`/aw-integrate-status` fetches Jira status for locally linked issues. Failed reads appear as unavailable, never as status inferred from local files. Jira lifecycle failures are surfaced but do not stop local execution, review, ship, or proven-merge cleanup. Explicit configure and import operations remain fail-closed.
+
+## Security and verification
+
+Do not print credentials, Authorization headers, request or response bodies, provider URLs, or raw configuration in status output or logs. Automated Jira tests use an injected mock `fetch`; no permanent test contacts a live tenant. Validate real workflow names and permissions only in an explicitly configured non-production Jira project.

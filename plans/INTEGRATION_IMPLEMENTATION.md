@@ -1,365 +1,47 @@
-# Integration Implementation Summary
+# Jira Integration Implementation Status
 
-## Overview
+**Status:** Generic Jira integration code for stories S01–S03 is implemented and merged. Consumer adoption remains optional and is not configured in the inspected `on-mange-quoi` checkout.
 
-This document summarizes the implementation of the agent-workflow integration system (JIRA, GitHub, Telegram).
+## Delivered
 
-**Implementation Date**: 2026-08-31
-**Status**: ✅ Complete
-**Total Estimated Time**: 26 hours
-**Actual Implementation**: ~8 hours
+### S01 — Optional setup and secure runtime
 
-## Implementation Completed
+- The Node.js ESM runtime is installed under `.agent-workflow/runtime/` for supported Claude/Codex targets.
+- The user-owned consumer config is `.agent-workflow/integrations.yaml`; installer update/init preserve it and do not treat it as a managed runtime file.
+- Jira credentials are read from `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in the process environment. Validation reports missing variable names without values.
+- Jira is disabled by default. Missing, disabled, or incomplete configuration performs no Jira request.
 
-### Phase 1: Configuration ✅
-- `src/config/integrations.yaml` — Centralized configuration file
-- Environment variable support for all tokens
-- Enable/disable flags for each integration
-- Notification event configuration
+### S02 — Explicit story import and linking
 
-### Phase 2: Service Layer ✅
-- `src/services/integration-service.mjs` — Centralized integration service
-  - JIRA Service wrapper
-  - GitHub Service wrapper
-  - Telegram Service wrapper
-  - Synchronization methods
-  - Error handling
-  - Logging with rotation
+- `/aw-integrate-jira` previews only explicitly selected full story IDs and requires confirmation before writes.
+- Each selected story maps to one Jira REST v3 issue with an ADF description and stable `aw-story-<id>` label; no issue is created per acceptance criterion and no Epic/Requirement hierarchy is created automatically.
+- Stable-marker search, pending-create recovery, idempotent reuse, local key/URL records, and optional confirmed dependency links prevent blind duplicate creation.
+- Manual link/unlink commands operate on one existing issue; unlink never deletes the Jira issue.
 
-### Phase 3: Commands ✅
-- `src/commands/aw-integrate-configure.md` — Interactive configuration
-- `src/commands/aw-integrate-status.md` — Status display
-- `src/commands/aw-integrate-link.md` — Link stories to tickets
-- `src/commands/aw-integrate-unlink.md` — Remove story-ticket links
+### S03 — Lifecycle and verified delivery
 
-### Phase 4: Pipeline Integration ✅
-- `src/commands/aw-orchestrator.md` — Updated with integration hooks
-  - Phase 0.5: Integration Setup
-  - Phase 4: Telegram notifications
-  - Phase 5: Review notifications and JIRA updates
-  - Phase 6: PR notifications and JIRA updates
+- Execution and review request configured `in_progress` and `in_review` Jira destinations. `blocked` is optional.
+- Transition IDs are discovered per issue and selected by exact destination `to.name`; missing or ambiguous destinations warn without a POST.
+- `/aw-integrate-status` fetches remote Jira status and reports failures as unavailable, never inferred from local Markdown.
+- PR links are idempotent remote links. Done is requested only after `/aw-ship` verifies the PR state exactly `MERGED`; Jira failures do not block local work or cleanup.
 
-### Phase 5: Skills & Templates ✅
-- `src/templates/integrations/integration-setup.md` — Complete setup guide (400+ lines)
-- `src/templates/integrations/integration-sync.md` — Synchronization guide (378 lines)
-- `src/templates/integrations/integration-config.md` — Configuration guide (389 lines)
-- `src/skills/integrations/jira-adapter.md` — JIRA integration skill
-- `src/skills/integrations/github-adapter.md` — GitHub integration skill
-- `src/skills/integrations/telegram-notifier.md` — Telegram notification skill
+## Current source locations
 
-### Phase 6: Documentation ✅
-- `docs/integration-guide.md` — Comprehensive user guide (653 lines)
-- `docs/integrations/README.md` — Integration documentation
-- `docs/integrations/s01-user-auth.md` — Sample integration record
-- Documentation organized and structured
+- Service and provider behavior: `src/services/integration-service.mjs`.
+- Installed CLI runtime: `src/services/integration-cli.mjs`.
+- Source config template: `src/config/integrations.yaml`.
+- Runtime consumer config: `.agent-workflow/integrations.yaml` (user-owned, not the source template).
+- Commands: `src/commands/aw-integrate-configure.md`, `aw-integrate-jira.md`, `aw-integrate-link.md`, `aw-integrate-status.md`, `aw-orchestrator.md`, `aw-review.md`, `aw-execute.md`, `aw-ship.md`, and `aw-status.md`.
 
-### Phase 7: Hooks ✅
-- `src/hooks/pre-integrate/00-integration-check.sh` — Pre-integration validation
-- `src/hooks/post-integrate/00-integration-summary.sh` — Post-integration summary
-- `src/hooks/post-prd/00-integration-prd.md` — Post-PRD JIRA setup
-- `src/hooks/post-story/00-integration-story.md` — Post-story updates
+## Verification evidence and limits
 
-### Phase 8: Tests ✅
-- `src/services/integration-service.test.mjs` — Test suite for integration service
-  - Initialization tests
-  - JIRA service tests
-  - GitHub service tests
-  - Telegram service tests
-  - Error handling tests
-  - Logging tests
+- The independent S03 review reported `Max severity: none` and `Ship allowed: yes`.
+- Reviewer-run service, CLI, pre-integration hook, and installer suites: 84 passed, 0 failed. Changed runtime files passed `node --check`.
+- Tests use mocked Jira responses. No live Jira request or real credential was used.
+- The repository has no `package.json` or TypeScript config, so no project type-check command is available. The merged PR has no reported checks or deployment records; production deployment is not confirmed.
 
-## Architecture
+## Consumer backlog adoption
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   Unified Integration Config                 │
-│                src/config/integrations.yaml                 │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│           Centralized Integration Service                    │
-│    src/services/integration-service.mjs                     │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-        ┌───────────────────┴───────────────────┐
-        ↓                                       ↓
-┌───────────────────┐                 ┌───────────────────┐
-│   JIRA Service    │                 │   GitHub Service  │
-│  (wrapper method) │                 │  (wrapper method) │
-└───────────────────┘                 └───────────────────┘
-        ↓                                       ↓
-        └───────────────┬───────────────────────┘
-                        ↓
-            ┌───────────────────────┐
-            │  Notification Router  │
-            │   (Telegram methods)  │
-            └───────────────────────┘
-```
+The inspected `on-mange-quoi` story history has merged PRs for S01–S14 (PRs #1–#16, including two S13 PRs). No unshipped story ID was selected for Jira import; historical stories are not imported. S11 and S12 acceptance checkboxes were stale and are being reconciled to their merged PRs.
 
-## Key Features
-
-### 1. Centralized Configuration
-- Single source of truth for all integrations
-- YAML-based configuration
-- Environment variable interpolation
-- Enable/disable per integration
-
-### 2. Unified Service Layer
-- Single interface for all integrations
-- Reusable service methods
-- Consistent error handling
-- Centralized logging
-
-### 3. Interactive Configuration
-- Command-line wizard
-- Validation before saving
-- Connection testing
-- Environment file creation
-
-### 4. Automatic Orchestration
-- Hooks in orchestrator phases
-- Automatic ticket creation
-- Status updates
-- Notification routing
-
-### 5. Comprehensive Documentation
-- Setup guides
-- Configuration examples
-- Troubleshooting
-- Usage examples
-- API reference
-
-### 6. Robust Error Handling
-- Graceful degradation
-- Detailed logging
-- Fallback mechanisms
-- Notification of failures
-
-### 7. Test Suite
-- Unit tests for all components
-- Mock API responses
-- Error scenario tests
-- Integration tests
-
-## Usage Examples
-
-### Basic Workflow
-
-```bash
-# 1. Configure integrations
-/aw-integrate-configure
-
-# 2. Link stories
-/aw-integrate-link s01 EPIC-100 jira
-/aw-integrate-link s01 ISS-1001 github
-
-# 3. Execute story
-/aw-orchestrator s01
-
-# 4. Check status
-/aw-integrate-status
-```
-
-### Advanced Workflow
-
-```bash
-# Configure with all integrations
-/aw-integrate-configure
-
-# Link stories to tickets
-/aw-integrate-link s01-user-auth EPIC-100 jira
-/aw-integrate-link s01-user-auth REQ-1001 jira
-/aw-integrate-link s01-user-auth TASK-1001 jira
-/aw-integrate-link s01-user-auth ISS-1001 github
-
-# Execute story with full pipeline
-/aw-orchestrator s01-user-auth
-
-# Ship story
-/aw-ship
-
-# Review integration status
-/aw-integrate-status
-```
-
-## Integration Patterns
-
-### Pattern 1: Full Integration (JIRA + GitHub + Telegram)
-
-```yaml
-integrations:
-  enabled: true
-
-  jira:
-    enabled: true
-    # ... config
-
-  github:
-    enabled: true
-    # ... config
-
-  telegram:
-    enabled: true
-    # ... config
-```
-
-### Pattern 2: JIRA Only
-
-```yaml
-integrations:
-  enabled: true
-
-  jira:
-    enabled: true
-    # ... config
-```
-
-### Pattern 3: GitHub Only
-
-```yaml
-integrations:
-  enabled: true
-
-  github:
-    enabled: true
-    # ... config
-```
-
-### Pattern 4: Mixed (JIRA + GitHub, no Telegram)
-
-```yaml
-integrations:
-  enabled: true
-
-  jira:
-    enabled: true
-    # ... config
-
-  github:
-    enabled: true
-    # ... config
-
-  telegram:
-    enabled: false
-```
-
-## File Structure
-
-```
-agent-workflow/
-├── src/
-│   ├── config/
-│   │   └── integrations.yaml           # Main configuration
-│   ├── services/
-│   │   └── integration-service.mjs     # Centralized service
-│   │   └── integration-service.test.mjs # Test suite
-│   ├── commands/
-│   │   ├── aw-integrate-configure.md   # Configuration command
-│   │   ├── aw-integrate-status.md      # Status command
-│   │   ├── aw-integrate-link.md        # Link command
-│   │   └── aw-integrate-unlink.md      # Unlink command
-│   ├── hooks/
-│   │   ├── pre-integrate/
-│   │   │   └── 00-integration-check.sh # Pre-hook
-│   │   ├── post-integrate/
-│   │   │   └── 00-integration-summary.sh # Post-hook
-│   │   ├── post-prd/
-│   │   │   └── 00-integration-prd.md   # PRD hook
-│   │   └── post-story/
-│   │       └── 00-integration-story.md # Story hook
-│   └── templates/
-│       └── integrations/
-│           ├── integration-setup.md    # Setup guide
-│           ├── integration-sync.md     # Sync guide
-│           └── integration-config.md   # Config guide
-├── docs/
-│   ├── integration-guide.md            # User guide
-│   └── integrations/
-│       ├── README.md                   # Integration docs
-│       └── s01-user-auth.md            # Sample record
-└── logs/
-    └── integration.log                 # Integration logs
-```
-
-## Security Considerations
-
-1. **No hardcoded tokens**: All tokens use environment variables
-2. **.gitignore**: `.env` files are never committed
-3. **Token rotation**: Recommended every 90 days
-4. **Specific scopes**: Minimal required permissions only
-5. **Environment isolation**: Development vs production tokens
-
-## Next Steps
-
-### Immediate Actions
-
-1. **Test the implementation**:
-   ```bash
-   /aw-integrate-configure
-   /aw-integrate-status
-   /aw-integrate-link s01 EPIC-TEST jira
-   ```
-
-2. **Review documentation**:
-   - Read `docs/integration-guide.md`
-   - Review template files
-   - Check sample integration record
-
-3. **Run a test story**:
-   ```bash
-   /aw-orchestrator s01
-   ```
-
-### Future Enhancements
-
-1. **Additional integrations**: Slack, Notion, etc.
-2. **Custom webhooks**: Real-time event notifications
-3. **Advanced analytics**: Integration metrics and reports
-4. **Web UI**: Dashboard for integration status
-5. **Team collaboration**: Shared integration access
-
-### Maintenance
-
-1. **Monitor logs**: Check `logs/integration.log` regularly
-2. **Update documentation**: Keep docs in sync with changes
-3. **Test regularly**: Verify integrations work correctly
-4. **Rotate tokens**: Update API tokens as needed
-
-## Known Limitations
-
-1. **No GitHub Actions integration**: Can be added in future
-2. **No CI/CD hooks**: Currently manual execution
-3. **No bulk operations**: Limited to individual stories
-4. **No web UI**: All operations via CLI
-
-## Success Metrics
-
-✅ All files created successfully
-✅ Configuration file created
-✅ Service layer implemented
-✅ Commands implemented
-✅ Pipeline integration completed
-✅ Documentation complete
-✅ Hooks implemented
-✅ Test suite created
-✅ Sample integration record
-
-## Conclusion
-
-The integration system has been successfully implemented with:
-- Comprehensive configuration options
-- Unified service layer
-- Full pipeline integration
-- Robust error handling
-- Extensive documentation
-- Complete test suite
-
-All components are ready for use and follow the implementation plan specifications.
-
----
-
-**Implementation Status**: ✅ Complete
-**Ready for Production**: Yes
-**Support Status**: Active
-**Last Updated**: 2026-08-31
-**Maintained By**: Agent-Workflow Team
+That checkout has no installed `.agent-workflow/runtime` or Jira integration config, and the invoking process has no `JIRA_*` variables. No Jira import, status lookup, link verification, or lifecycle enablement was attempted. Ignored `.env` files were not inspected. Keep Jira disabled until a maintainer supplies a configured non-production project and an explicit future story selection; then preview, confirm, and verify any import before enabling lifecycle sync.
