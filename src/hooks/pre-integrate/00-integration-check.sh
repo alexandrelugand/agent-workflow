@@ -1,77 +1,42 @@
-#!/bin/bash
-# Pre-integration hook
-# Run before integration operations
+#!/usr/bin/env bash
+# Jira is optional: missing, disabled, or incomplete Jira never blocks local work.
+set -euo pipefail
+search_dir="$PWD"
+while [ ! -f "$search_dir/.agent-workflow/integrations.yaml" ]; do
+  parent="$(dirname "$search_dir")"
+  [ "$parent" != "$search_dir" ] || exit 0
+  search_dir="$parent"
+done
+config="$search_dir/.agent-workflow/integrations.yaml"
 
-set -e
+provider_enabled() {
+  awk -v provider="$1" '
+    { sub(/\r$/, "") }
+    $0 == "  " provider ":" { in_provider=1; next }
+    /^  [[:alnum:]_-]+:/ { in_provider=0 }
+    in_provider && /^    enabled:[[:space:]]*true([[:space:]]|$)/ { enabled=1 }
+    END { exit !enabled }
+  ' "$config"
+}
 
-echo "🔍 Running pre-integration checks..."
-
-# Check if integrations.yaml exists
-if [ ! -f "src/config/integrations.yaml" ]; then
-    echo "❌ Error: Integration configuration file not found"
-    echo "   Please run /aw-integrate-configure to create it"
+# Jira credentials and connection validation are handled only by explicit setup.
+# Retain the required credential gates for the other existing providers.
+if provider_enabled github; then
+  missing=()
+  [ -n "${GITHUB_TOKEN:-}" ] || missing+=(GITHUB_TOKEN)
+  if [ "${#missing[@]}" -gt 0 ]; then
+    printf 'GitHub integration requires environment variable(s): %s\n' "${missing[*]}" >&2
     exit 1
+  fi
 fi
 
-# Check if integrations are enabled
-if grep -q "enabled: false" src/config/integrations.yaml; then
-    echo "⚠️  Warning: No integrations enabled in configuration"
-    echo "   Enable integrations in src/config/integrations.yaml"
+if provider_enabled telegram; then
+  missing=()
+  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || missing+=(TELEGRAM_BOT_TOKEN)
+  [ -n "${TELEGRAM_USER_ID:-}" ] || missing+=(TELEGRAM_USER_ID)
+  if [ "${#missing[@]}" -gt 0 ]; then
+    printf 'Telegram integration requires environment variable(s): %s\n' "${missing[*]}" >&2
+    exit 1
+  fi
 fi
-
-# Check if integrations directory exists
-if [ ! -d "docs/integrations" ]; then
-    echo "⚠️  Warning: docs/integrations directory not found"
-    echo "   Creating directory..."
-    mkdir -p docs/integrations
-fi
-
-# Check if logs directory exists
-if [ ! -d "logs" ]; then
-    echo "⚠️  Warning: logs directory not found"
-    echo "   Creating directory..."
-    mkdir -p logs
-fi
-
-# Check environment variables for enabled integrations
-ENABLED_INTEGRATIONS=()
-
-if grep -q "jira:" src/config/integrations.yaml && \
-   ! grep -A10 "jira:" src/config/integrations.yaml | grep -q "enabled: false"; then
-    if [ -z "$JIRA_API_URL" ] || [ -z "$JIRA_API_TOKEN" ] || [ -z "$JIRA_EMAIL" ]; then
-        echo "❌ Error: JIRA environment variables not set"
-        echo "   Please set: JIRA_API_URL, JIRA_API_TOKEN, JIRA_EMAIL"
-        exit 1
-    fi
-    ENABLED_INTEGRATIONS+=("JIRA")
-fi
-
-if grep -q "github:" src/config/integrations.yaml && \
-   ! grep -A10 "github:" src/config/integrations.yaml | grep -q "enabled: false"; then
-    if [ -z "$GITHUB_TOKEN" ]; then
-        echo "❌ Error: GitHub environment variable not set"
-        echo "   Please set: GITHUB_TOKEN"
-        exit 1
-    fi
-    ENABLED_INTEGRATIONS+=("GitHub")
-fi
-
-if grep -q "telegram:" src/config/integrations.yaml && \
-   ! grep -A10 "telegram:" src/config/integrations.yaml | grep -q "enabled: false"; then
-    if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_USER_ID" ]; then
-        echo "❌ Error: Telegram environment variables not set"
-        echo "   Please set: TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID"
-        exit 1
-    fi
-    ENABLED_INTEGRATIONS+=("Telegram")
-fi
-
-if [ ${#ENABLED_INTEGRATIONS[@]} -eq 0 ]; then
-    echo "ℹ️  No integrations enabled. Skipping integration checks."
-    exit 0
-fi
-
-echo "✅ Pre-integration checks passed for: ${ENABLED_INTEGRATIONS[*]}"
-echo ""
-
 exit 0

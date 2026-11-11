@@ -22,7 +22,7 @@ fi
 
 ```bash
 # Check if JIRA is enabled
-if grep -q "enabled: false" src/config/integrations.yaml; then
+if grep -q "enabled: false" .agent-workflow/integrations.yaml; then
     echo "⚠️  JIRA integration not enabled. Skipping post-PRD hook."
     exit 0
 fi
@@ -88,13 +88,7 @@ Next steps:
 ```markdown
 ## Error: JIRA token not configured
 
-Please set environment variables:
-
-export JIRA_API_URL="https://your-company.atlassian.net"
-export JIRA_API_TOKEN="your-base64-encoded-token"
-export JIRA_EMAIL="your-email@company.com"
-
-Then run: /aw-integrate-configure
+Set these variables in the process environment or a user-managed secret store: `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`. Never print or log their values. Keep Jira disabled until `/aw-integrate-configure` completes explicit validation.
 ```
 
 ### PRD Not Found

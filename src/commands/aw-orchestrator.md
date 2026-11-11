@@ -34,10 +34,20 @@ or checkout the feature branch in the repository base directory.
 
 ## Phase 0.5 — Integration Setup (Optional)
 
-Check if integrations are enabled:
+Before reading integration settings from a story worktree, locate the consumer root that owns the shared runtime:
 
+```sh
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+integration_config="$consumer_root/.agent-workflow/integrations.yaml"
+if [ ! -f "$integration_config" ]; then
+  consumer_root=""
+fi
+```
+
+If `consumer_root` is empty, the optional integration runtime is not installed; skip this phase and continue local work. Otherwise read `"$consumer_root/.agent-workflow/integrations.yaml"` and invoke installed integration commands via `"$consumer_root/.agent-workflow/runtime/"`.
 ### JIRA Integration
-If JIRA is enabled in `src/config/integrations.yaml`:
+If JIRA is enabled in `"$consumer_root/.agent-workflow/integrations.yaml"`:
 1. Read `docs/prd.md` for story details
 2. Create JIRA Epic if needed: `/aw-integrate-jira`
 3. Create JIRA Requirement if needed: `/aw-integrate-jira`
@@ -45,13 +55,13 @@ If JIRA is enabled in `src/config/integrations.yaml`:
 5. Update `docs/integrations/<id>.md` with JIRA ticket IDs
 
 ### GitHub Integration
-If GitHub is enabled in `src/config/integrations.yaml`:
+If GitHub is enabled in `"$consumer_root/.agent-workflow/integrations.yaml"`:
 1. Read `docs/stories.md` for story details
 2. Create GitHub Issue: `/aw-integrate-github`
 3. Update `docs/integrations/<id>.md` with GitHub issue number
 
 ### Telegram Integration
-If Telegram is enabled in `src/config/integrations.yaml`:
+If Telegram is enabled in `"$consumer_root/.agent-workflow/integrations.yaml"`:
 1. Send initialization notification: "🚀 Pipeline started: Story <id> — <story-name>"
 2. Set up event notifications for each phase
 

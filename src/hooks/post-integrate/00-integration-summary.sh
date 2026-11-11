@@ -10,9 +10,9 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Check configuration status
-if [ -f "src/config/integrations.yaml" ]; then
-    echo "Configuration:"
-    grep -A5 "^integrations:" src/config/integrations.yaml | grep "enabled: true" && echo "  ✅ All integrations enabled" || echo "  ⚠️  Some integrations disabled"
+if [ -f ".agent-workflow/integrations.yaml" ]; then
+    echo "Configuration: .agent-workflow/integrations.yaml"
+    grep -A5 "^integrations:" .agent-workflow/integrations.yaml | grep "enabled: true" && echo "  ✅ Integrations enabled" || echo "  ⚠️  Some integrations disabled"
     echo ""
 fi
 

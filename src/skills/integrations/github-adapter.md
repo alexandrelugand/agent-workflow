@@ -7,14 +7,17 @@ description: Create GitHub issues and pull requests for agent-workflow stories a
 
 You create GitHub issues and PRs to track work and automate merging. Use during execution and shipping phases.
 
+Before reading configuration from a story worktree, resolve the consumer root that owns the installed config and runtime:
+
+```sh
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+integration_config="$consumer_root/.agent-workflow/integrations.yaml"
+```
+
 ## Configuration
 
-Read `src/config/integrations.yml` for project configuration:
-- `api_url`: GitHub API endpoint
-- `personal_access_token`: PAT with repo permissions
-- `repo`: Repository identifier (e.g., "org/repo")
-- `default_branch`: Target branch for PRs
-- `issue_prefix`: Prefix for GitHub issues (ISS-)
+Read secret-free GitHub settings from `"$integration_config"`. Keep tokens in environment variables only; never put credential values in YAML or output.
 
 ## Workflow
 

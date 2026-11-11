@@ -7,13 +7,17 @@ description: Send real-time notifications to user via Telegram about agent-workf
 
 You send notifications to the user via Telegram for agent-workflow events. Use during execution, review, and ship phases.
 
+Before reading configuration from a story worktree, resolve the consumer root that owns the installed config:
+
+```sh
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+integration_config="$consumer_root/.agent-workflow/integrations.yaml"
+```
+
 ## Configuration
 
-Read `src/config/integrations.yml` for configuration:
-
-- `bot_token`: Telegram bot token (from environment)
-- `user_id`: Telegram user ID (from environment)
-- `notify_on`: Events to send notifications for
+Read secret-free Telegram settings and notification preferences from `"$integration_config"`. Keep bot credentials in the environment; never put tokens in YAML or output.
 
 ## Supported Events
 
@@ -318,7 +322,7 @@ Example:
 
 ## Configuration Control
 
-Check `config/integrations.yml` before sending:
+Check `"$integration_config"` before sending:
 
 ```yaml
 telegram:

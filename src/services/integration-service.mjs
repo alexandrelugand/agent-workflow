@@ -4,16 +4,25 @@
  * for agent-workflow pipeline
  */
 
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join, dirname } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { resolveConsumerRoot } from './project-root.mjs';
+import { requireApprovedJiraBaseUrl } from './jira-url.mjs';
+function safeProviderError(provider, error) {
+  const status = Number.isInteger(error?.status) ? error.status : null;
+  const guidance = provider === 'Jira' ? '; check credentials and project permissions' : '';
+  const safe = new Error(`${provider} request failed${status === null ? '' : ` with HTTP ${status}`}${guidance}`);
+  if (status !== null) safe.status = status;
+  return safe;
+}
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 class IntegrationService {
-  constructor(configPath = null) {
-    this.configPath = configPath || join(__dirname, '../../src/config/integrations.yaml');
+  constructor(configPath = null, options = {}) {
+    this.projectRoot = options.projectRoot || resolveConsumerRoot(import.meta.url);
+    this.configPath = configPath || join(this.projectRoot, '.agent-workflow/integrations.yaml');
+    this.fetch = options.fetch || globalThis.fetch;
+    this.environment = options.environment || process.env;
     this.config = null;
     this.logger = null;
     this.jiraService = null;
@@ -43,100 +52,32 @@ class IntegrationService {
    * Load configuration from YAML file
    */
   loadConfig() {
-    if (!existsSync(this.configPath)) {
-      throw new Error(`Config file not found: ${this.configPath}`);
-    }
-
-    const configContent = readFileSync(this.configPath, 'utf-8');
-
-    // Parse YAML manually (simple implementation)
-    this.config = this.parseYAML(configContent);
-    this.log('debug', 'Configuration loaded');
+    this.config = existsSync(this.configPath)
+      ? this.parseYAML(readFileSync(this.configPath, 'utf-8'))
+      : { integrations: { enabled: true, jira: null, github: null, telegram: null } };
   }
 
   /**
    * Parse YAML content (simple parser)
    */
   parseYAML(content) {
-    const config = {
-      integrations: {
-        enabled: true,
-        version: '1.0.0',
-        jira: null,
-        github: null,
-        telegram: null
-      }
-    };
-
-    const lines = content.split('\n');
-    let currentSection = 'integrations';
-    let currentSubsection = null;
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-
-      // Skip empty lines and comments
-      if (!trimmedLine || trimmedLine.startsWith('#')) {
-        continue;
-      }
-
-      // Check for section headers
-      if (trimmedLine.startsWith('integrations:')) {
-        currentSection = 'integrations';
-        continue;
-      }
-
-      if (trimmedLine.startsWith('  jira:')) {
-        currentSubsection = 'jira';
-        continue;
-      }
-
-      if (trimmedLine.startsWith('  github:')) {
-        currentSubsection = 'github';
-        continue;
-      }
-
-      if (trimmedLine.startsWith('  telegram:')) {
-        currentSubsection = 'telegram';
-        continue;
-      }
-
-      // Parse key-value pairs
-      const match = trimmedLine.match(/^(\w+):\s*(.*)$/);
-      if (match) {
-        const key = match[1];
-        const value = match[2];
-
-        // Handle environment variables
-        if (value.startsWith('${') && value.endsWith('}')) {
-          const envVar = value.slice(2, -1);
-          const envValue = process.env[envVar];
-          if (envValue !== undefined) {
-            // Parse nested objects
-            if (currentSubsection === 'jira' && key === 'notify_on') {
-              config.integrations[currentSubsection] = config.integrations[currentSubsection] || {};
-              config.integrations[currentSubsection].notify_on = this.parseYAML(value);
-            } else if (currentSubsection === 'github' && key === 'default_labels') {
-              config.integrations[currentSubsection] = config.integrations[currentSubsection] || {};
-              config.integrations[currentSubsection].default_labels = this.parseYAML(value);
-            } else if (currentSubsection === 'telegram' && key === 'notify_on') {
-              config.integrations[currentSubsection] = config.integrations[currentSubsection] || {};
-              config.integrations[currentSubsection].notify_on = this.parseYAML(value);
-            } else {
-              config.integrations[currentSubsection] = config.integrations[currentSubsection] || {};
-              config.integrations[currentSubsection][key] = envValue;
-            }
-          }
-        } else if (key === 'enabled') {
-          config.integrations[currentSubsection] = config.integrations[currentSubsection] || {};
-          config.integrations[currentSubsection].enabled = value === 'true';
-        } else {
-          config.integrations[currentSubsection] = config.integrations[currentSubsection] || {};
-          config.integrations[currentSubsection][key] = value;
-        }
-      }
+    const config = { integrations: { enabled: true, jira: null, github: null, telegram: null } };
+    const globalEnabled = content.match(/^  enabled:[ \t]*(true|false)(?:[ \t]*#.*)?[ \t]*$/m);
+    if (globalEnabled) config.integrations.enabled = globalEnabled[1] === 'true';
+    let section = null;
+    for (const line of content.split(/\r?\n/)) {
+      const top = line.match(/^  (jira|github|telegram|logging):\s*$/);
+      if (top) { section = top[1]; config.integrations[section] = {}; continue; }
+      const field = line.match(/^    ([\w-]+):\s*(.*?)\s*(?:#.*)?$/);
+      if (!field || !section) continue;
+      if (section === 'jira' && ['api_url', 'api_token', 'email'].includes(field[1])) continue;
+      let value = field[2].replace(/^['"]|['"]$/g, '');
+      value = value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (placeholder, name) => this.environment[name] ?? placeholder);
+      if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      else if (/^-?\d+(?:\.\d+)?$/.test(value)) value = Number(value);
+      config.integrations[section][field[1]] = value;
     }
-
     return config;
   }
 
@@ -155,10 +96,10 @@ class IntegrationService {
 
     // Create log file if needed
     if (logConfig.enabled) {
-      const logDir = join(process.cwd(), 'logs');
-      if (!existsSync(logDir)) {
-        require('fs').mkdirSync(logDir, { recursive: true });
-      }
+      const logFile = logConfig.log_file || 'logs/integration.log';
+      const logPath = join(this.projectRoot, logFile);
+      mkdirSync(dirname(logPath), { recursive: true });
+      this.logFilePath = logPath;
     }
   }
 
@@ -166,13 +107,12 @@ class IntegrationService {
    * Initialize JIRA service
    */
   initializeJiraService() {
-    const jiraConfig = this.config.integrations?.jira;
-    if (jiraConfig?.enabled) {
-      this.jiraService = new JIRAService(jiraConfig);
-      this.log('info', 'JIRA service initialized');
-    } else {
-      this.log('debug', 'JIRA integration disabled');
-    }
+    const config = this.config.integrations?.jira;
+    const required = ['JIRA_API_URL', 'JIRA_PROJECT_KEY', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+    if (this.config.integrations.enabled !== true || config?.enabled !== true || required.some(name => !this.environment[name])) return;
+    this.jiraService = new JIRAService({ ...config, api_url: this.environment.JIRA_API_URL,
+      project_key: this.environment.JIRA_PROJECT_KEY, email: this.environment.JIRA_EMAIL,
+      api_token: this.environment.JIRA_API_TOKEN }, this.fetch);
   }
 
   /**
@@ -181,7 +121,8 @@ class IntegrationService {
   initializeGitHubService() {
     const githubConfig = this.config.integrations?.github;
     if (githubConfig?.enabled) {
-      this.githubService = new GitHubService(githubConfig);
+      this.githubService = new GitHubService({ ...githubConfig,
+        personal_access_token: this.environment.GITHUB_TOKEN ?? githubConfig.personal_access_token }, this.fetch);
       this.log('info', 'GitHub service initialized');
     } else {
       this.log('debug', 'GitHub integration disabled');
@@ -194,7 +135,9 @@ class IntegrationService {
   initializeTelegramService() {
     const telegramConfig = this.config.integrations?.telegram;
     if (telegramConfig?.enabled) {
-      this.telegramService = new TelegramService(telegramConfig);
+      this.telegramService = new TelegramService({ ...telegramConfig,
+        bot_token: this.environment.TELEGRAM_BOT_TOKEN ?? telegramConfig.bot_token,
+        user_id: this.environment.TELEGRAM_USER_ID ?? telegramConfig.user_id }, this.fetch);
       this.log('info', 'Telegram service initialized');
     } else {
       this.log('debug', 'Telegram integration disabled');
@@ -216,13 +159,11 @@ class IntegrationService {
     console.log(`[${logEntry.level.toUpperCase()}] ${logEntry.timestamp}: ${logEntry.message}`, meta ? JSON.stringify(meta) : '');
 
     // Write to log file if enabled
-    if (this.config.integrations?.logging?.enabled) {
-      const logFile = join(process.cwd(), this.config.integrations.logging.log_file);
+    if (this.logFilePath) {
       try {
-        const logContent = `${JSON.stringify(logEntry)}\n`;
-        require('fs').appendFileSync(logFile, logContent);
-      } catch (error) {
-        console.error(`Failed to write to log file: ${error.message}`);
+        appendFileSync(this.logFilePath, `${JSON.stringify(logEntry)}\n`);
+      } catch {
+        console.error('Failed to write integration log');
       }
     }
   }
@@ -238,21 +179,9 @@ class IntegrationService {
    * Get integration status
    */
   getIntegrationStatus() {
-    return {
-      enabled: this.areIntegrationsEnabled(),
-      jira: {
-        enabled: this.jiraService !== null,
-        config: this.config.integrations?.jira
-      },
-      github: {
-        enabled: this.githubService !== null,
-        config: this.config.integrations?.github
-      },
-      telegram: {
-        enabled: this.telegramService !== null,
-        config: this.config.integrations?.telegram
-      }
-    };
+    const status = (name, service) => ({ enabled: Boolean(service), configured: Boolean(this.config.integrations?.[name]?.enabled) });
+    return { enabled: this.areIntegrationsEnabled(), jira: status('jira', this.jiraService),
+      github: status('github', this.githubService), telegram: status('telegram', this.telegramService) };
   }
 
   /**
@@ -266,8 +195,9 @@ class IntegrationService {
     try {
       return await this.jiraService.createTicket(ticketType, data);
     } catch (error) {
-      this.log('error', `Failed to create JIRA ticket: ${error.message}`, { ticketType, ...data });
-      throw error;
+      const safe = safeProviderError('Jira', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
     }
   }
 
@@ -282,8 +212,9 @@ class IntegrationService {
     try {
       return await this.githubService.createIssue(data);
     } catch (error) {
-      this.log('error', `Failed to create GitHub issue: ${error.message}`, data);
-      throw error;
+      const safe = safeProviderError('GitHub', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
     }
   }
 
@@ -298,8 +229,9 @@ class IntegrationService {
     try {
       return await this.telegramService.sendNotification(event, context);
     } catch (error) {
-      this.log('error', `Failed to send Telegram notification: ${error.message}`, { event, ...context });
-      throw error;
+      const safe = safeProviderError('Telegram', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
     }
   }
 
@@ -314,8 +246,9 @@ class IntegrationService {
     try {
       return await this.jiraService.syncStory(storyId);
     } catch (error) {
-      this.log('error', `Failed to sync story with JIRA: ${error.message}`, { storyId });
-      throw error;
+      const safe = safeProviderError('Jira', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
     }
   }
 
@@ -330,8 +263,9 @@ class IntegrationService {
     try {
       return await this.githubService.syncStory(storyId);
     } catch (error) {
-      this.log('error', `Failed to sync story with GitHub: ${error.message}`, { storyId });
-      throw error;
+      const safe = safeProviderError('GitHub', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
     }
   }
 
@@ -356,8 +290,9 @@ class IntegrationService {
  * JIRA Service
  */
 class JIRAService {
-  constructor(config) {
+  constructor(config, fetchImpl = globalThis.fetch) {
     this.config = config;
+    this.fetch = fetchImpl;
     this.apiConfig = {
       url: config.api_url,
       token: config.api_token,
@@ -376,13 +311,14 @@ class JIRAService {
    */
   async createTicket(ticketType, data) {
     const { apiConfig, retryAttempts, retryDelay } = this;
-    const endpoint = `${apiConfig.url}/rest/api/${apiConfig.apiVersion || '3'}/issue`;
-
+    const baseUrl = requireApprovedJiraBaseUrl(apiConfig.url);
+    const endpoint = `${baseUrl}/rest/api/${apiConfig.apiVersion || '3'}/issue`;
     const payload = this.buildTicketPayload(ticketType, data);
 
     for (let attempt = 1; attempt <= retryAttempts; attempt++) {
       try {
-        const response = await fetch(endpoint, {
+        const response = await this.fetch(endpoint, {
+          redirect: 'error',
           method: 'POST',
           headers: {
             'Authorization': `Basic ${btoa(`${apiConfig.email}:${apiConfig.token}`)}`,
@@ -390,20 +326,14 @@ class JIRAService {
           },
           body: JSON.stringify(payload)
         });
-
-        if (response.ok) {
-          const result = await response.json();
-          const ticketKey = result.key;
-          this.log('info', `Created ${ticketType} ticket: ${ticketKey}`, { ticketKey, ticketType });
-          return ticketKey;
-        } else {
-          const error = await response.text();
-          this.log('warn', `Failed to create ${ticketType} ticket (attempt ${attempt}/${retryAttempts}): ${error}`, { ticketType });
-          if (attempt === retryAttempts) throw new Error(`Failed to create ${ticketType} ticket: ${error}`);
-        }
+        if (response.ok) return (await response.json()).key;
+        const error = new Error('Jira request failed');
+        error.status = response.status;
+        throw error;
       } catch (error) {
-        this.log('warn', `Error creating ${ticketType} ticket (attempt ${attempt}/${retryAttempts}): ${error.message}`, { ticketType });
-        if (attempt === retryAttempts) throw error;
+        this.log('warn', `Jira request attempt ${attempt}/${retryAttempts} failed`,
+          Number.isInteger(error?.status) ? { statusCode: error.status } : {});
+        if (attempt === retryAttempts) throw safeProviderError('Jira', error);
         await this.sleep(retryDelay);
       }
     }
@@ -460,8 +390,9 @@ class JIRAService {
  * GitHub Service
  */
 class GitHubService {
-  constructor(config) {
+  constructor(config, fetchImpl = globalThis.fetch) {
     this.config = config;
+    this.fetch = fetchImpl;
     this.apiConfig = {
       url: config.api_url,
       token: config.personal_access_token,
@@ -486,7 +417,7 @@ class GitHubService {
 
     for (let attempt = 1; attempt <= retryAttempts; attempt++) {
       try {
-        const response = await fetch(endpoint, {
+        const response = await this.fetch(endpoint, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${apiConfig.token}`,
@@ -500,14 +431,14 @@ class GitHubService {
           const result = await response.json();
           this.log('info', `Created GitHub issue: ${result.number}`, { number: result.number });
           return result.number;
-        } else {
-          const error = await response.text();
-          this.log('warn', `Failed to create GitHub issue (attempt ${attempt}/${retryAttempts}): ${error}`, data);
-          if (attempt === retryAttempts) throw new Error(`Failed to create GitHub issue: ${error}`);
         }
+        const error = new Error('GitHub request failed');
+        error.status = response.status;
+        throw error;
       } catch (error) {
-        this.log('warn', `Error creating GitHub issue (attempt ${attempt}/${retryAttempts}): ${error.message}`, data);
-        if (attempt === retryAttempts) throw error;
+        this.log('warn', `GitHub request attempt ${attempt}/${retryAttempts} failed`,
+          Number.isInteger(error?.status) ? { statusCode: error.status } : {});
+        if (attempt === retryAttempts) throw safeProviderError('GitHub', error);
         await this.sleep(retryDelay);
       }
     }
@@ -557,8 +488,9 @@ class GitHubService {
  * Telegram Service
  */
 class TelegramService {
-  constructor(config) {
+  constructor(config, fetchImpl = globalThis.fetch) {
     this.config = config;
+    this.fetch = fetchImpl;
     this.apiConfig = {
       botToken: config.bot_token,
       userId: config.user_id,
@@ -581,7 +513,7 @@ class TelegramService {
     const endpoint = `https://api.telegram.org/bot${apiConfig.botToken}/sendMessage`;
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await this.fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -595,15 +527,16 @@ class TelegramService {
 
       if (response.ok) {
         const result = await response.json();
-        this.log('info', `Telegram notification sent successfully`, { messageId: result.message_id });
+        this.log('info', 'Telegram notification sent successfully', { messageId: result.message_id });
         return result.message_id;
-      } else {
-        const error = await response.text();
-        throw new Error(`Telegram API error: ${error}`);
       }
-    } catch (error) {
-      this.log('error', `Failed to send Telegram notification: ${error.message}`, { event });
+      const error = new Error('Telegram request failed');
+      error.status = response.status;
       throw error;
+    } catch (error) {
+      const safe = safeProviderError('Telegram', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
     }
   }
 

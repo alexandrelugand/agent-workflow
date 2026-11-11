@@ -24,13 +24,13 @@ fi
 # Check which integrations are enabled
 ENABLED_INTEGRATIONS=()
 
-if grep -q "jira:" src/config/integrations.yaml && \
-   ! grep -A10 "jira:" src/config/integrations.yaml | grep -q "enabled: false"; then
+if grep -q "jira:" .agent-workflow/integrations.yaml && \
+   ! grep -A10 "jira:" .agent-workflow/integrations.yaml | grep -q "enabled: false"; then
     ENABLED_INTEGRATIONS+=("JIRA")
 fi
 
-if grep -q "github:" src/config/integrations.yaml && \
-   ! grep -A10 "github:" src/config/integrations.yaml | grep -q "enabled: false"; then
+if grep -q "github:" .agent-workflow/integrations.yaml && \
+   ! grep -A10 "github:" .agent-workflow/integrations.yaml | grep -q "enabled: false"; then
     ENABLED_INTEGRATIONS+=("GitHub")
 fi
 
@@ -91,10 +91,10 @@ fi
 ### 6. Telegram Notification (if enabled)
 
 ```bash
-if grep -q "telegram:" src/config/integrations.yaml && \
-   ! grep -A10 "telegram:" src/config/integrations.yaml | grep -q "enabled: false"; then
+if grep -q "telegram:" .agent-workflow/integrations.yaml && \
+   ! grep -A10 "telegram:" .agent-workflow/integrations.yaml | grep -q "enabled: false"; then
 
-    if grep -q "task_completed: true" src/config/integrations.yaml; then
+    if grep -q "task_completed: true" .agent-workflow/integrations.yaml; then
         # Send completion notification
         echo "🚀 Story completed: $STORY_ID — $STORY_NAME" >> logs/integration.log
 

@@ -193,7 +193,12 @@ deleted is worse than no test** — it hides the hole it claims to cover.
 | Format | never as a repo-wide sweep — format the staged files at commit; a story is one commit |
 
 ## Technical conventions
-<< IP Mike: boilerplate structure, stack, patterns, naming, commit rules. >>
+- Runtime code uses Node.js ESM (`.mjs`) and built-in APIs; the installed Jira runtime requires Node.js 18 or newer. Avoid new dependencies unless an accepted ADR requires them.
+- The Jira project config is `.agent-workflow/integrations.yaml`; runtime files live in `.agent-workflow/runtime/`. The install manifest tracks runtime files only and never manages the user-owned config.
+- Jira credentials come from environment variables only. Status, logs, errors, tests, and command output must not expose secret values or Authorization headers.
+- Jira HTTP behavior is tested with injected/mock `fetch` and synthetic credentials using `node:test`; no permanent test contacts Jira. Use `node --test` for the focused Node suite.
+- Keep Jira optional: disabled or incomplete configuration means no network request; pipeline sync failures are explicit and fail-soft. Use Jira Cloud REST v3 contracts, ADF descriptions, stable `aw-story-<id>` labels, and per-issue transition discovery.
+- Only a verified merged PR may trigger the Jira `done` transition; never infer Jira status from local Markdown state.
 
 ## Definition of Done (per feature)
 - Single PR, structured description, readable diff
