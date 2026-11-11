@@ -18,8 +18,9 @@ integrations:
   enabled: true
   jira:
     enabled: false
-    project_key: "YOUR_PROJECT_KEY"
     issue_type: "Story"
+    browse_base_url: "" # Required for issue links when JIRA_API_URL is a scoped API base
+    epic_key: "" # Optional existing Epic parent; never created automatically
     status_names:
       todo: "To Do"
       in_progress: "In Progress"

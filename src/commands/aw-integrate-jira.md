@@ -1,23 +1,19 @@
 ---
-description: Integrate agent-workflow with JIRA to track stories, features, and tasks
-argument-hint: <story-id> (optional for PRD stories, required for story integration)
+description: Preview and explicitly import selected stories as one Jira issue each
+argument-hint: <story-id...>
 allowed-tools:
   - Read
-  - Write
   - Bash
   - AskUserQuestion
-  - Glob
 ---
 
-# JIRA Integration — agent-workflow
+# /aw-integrate-jira — Import selected stories
 
-> Integrate agent-workflow with JIRA. Creates tickets for stories, features, and tasks.
+Import only full story IDs explicitly supplied by the user. Do not enumerate PRD stories, backlog entries, or any other unrequested story. No arguments means stop and ask for the IDs; never infer a selection.
 
-## Purpose
+## Runtime paths
 
-Create JIRA tickets to track work from agent-workflow stories through to task execution.
-
-At the start of this command, resolve the consumer root; commands run from story worktrees while `.agent-workflow` stays in the shared checkout:
+Commands run in the current repository worktree while `.agent-workflow` is shared. Resolve the common consumer root and installed runtime before use:
 
 ```sh
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
@@ -26,149 +22,38 @@ integration_config="$consumer_root/.agent-workflow/integrations.yaml"
 integration_cli="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
 ```
 
-## Input
+If the config or runtime is absent, stop without making a Jira request. Credentials are process-environment-only: `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`. Never print or copy their values.
 
-- **JIRA Configuration**: Check `"$integration_config"`
-  - Keep `jira.enabled: false` until explicit validation succeeds
-  - Credentials come only from the four required environment variables
-- **Story ID** (optional): For creating tasks linked to specific stories
-  - If not provided, integrates with current PRD story breakdown
+## Preview and confirmation
 
-## Workflow
+1. Validate that every supplied value is a full ID from the current worktree's `docs/stories.md` (`sNN-slug`). Do not accept fuzzy names or silently drop invalid IDs.
+2. Check that Jira is enabled and complete. If it is disabled or incomplete, stop without a request or local change.
+3. Run the read-only preview with exactly the supplied IDs:
 
-### Phase 1: Validate Integration Config
-
-1. Check `"$integration_config"` for secret-free project and issue-type settings
-2. Run `node "$integration_cli" validate` through `/aw-integrate-configure`; keep Jira disabled until successful validation
-3. Verify `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_API_TOKEN`, and `JIRA_EMAIL` are present in the environment (do not print values)
-
-### Phase 2: Integrate with PRD Stories
-
-If creating Epics from PRD:
-
-1. **Read PRD** from `docs/prd.md`
-2. **Extract user stories**:
-   - For each story: Read acceptance criteria, complexity, dependencies
-3. **Create Epic tickets**:
-   - Summary: Story title
-   - Description: User story format + acceptance criteria
-   - Labels: #epic, #prd
-4. **Save JIRA Epic IDs** in `docs/prd.md`
-
-Example update:
-
-```markdown
-## Stories
-
-### Story s01 — User authentication
-**JIRA Epic**: EPIC-100
-
-### Story s02 — User profile management
-**JIRA Epic**: EPIC-101
-```
-
-### Phase 3: Integrate with Architecture Features
-
-If creating Requirements:
-
-1. **Read features** from `docs/architecture.md` or `docs/features/`
-2. **Create Requirement tickets**:
-   - Summary: Feature name
-   - Description: Technical approach, endpoints, data models
-   - Labels: #feature, #requirement
-   - Link to Epic: In JIRA, link Requirement → Epic
-3. **Save JIRA Requirement IDs** in feature files
-
-Example update:
-
-```markdown
-# Feature: User Authentication
-
-## JIRA Requirement: REQ-1001
-
-## Description
-Technical implementation of authentication system
-
-## API Endpoints
-- POST /api/auth/login
-- POST /api/auth/register
-```
-
-### Phase 4: Integrate with Development Tasks
-
-If creating Tasks for specific story:
-
-1. **Extract tasks** from `docs/designs/<story>/design.md` or `docs/tasks/`
-2. **Create Task tickets**:
-   - Summary: Task description
-   - Description: Implementation steps, acceptance criteria
-   - Labels: #task, #development
-   - Link to Requirement: In JIRA, link Task → Requirement
-3. **Save JIRA Task IDs** in task files
-
-Example update:
-
-```markdown
-# Task: Login endpoint implementation
-
-## JIRA Task: TASK-1001
-
-## Dependencies
-- REQ-1001
-
-## Implementation steps
-1. Create login controller
-2. Implement authentication logic
-```
-
-## Jira Setup Boundary
-
-Jira setup and explicit pre-enable connection validation belong to `/aw-integrate-configure`, which invokes `node "$integration_cli" validate` using the consumer-root runtime path. Read only secret-free settings from `"$integration_config"`; credentials come from process environment and must never be copied into commands, files, logs, or output. Keep Jira disabled until validation succeeds.
-
-## Output Files
-
-After integration:
-
-1. **`docs/prd.md`** — JIRA Epic IDs added to each story
-2. **`docs/features/`** — JIRA Requirement IDs in each feature file
-3. **`docs/tasks/`** — JIRA Task IDs in each task file
-4. **`logs/jira-integration.log`** — Integration history and errors
-5. **`docs/jira-issues.md`** — Summary of created tickets
-
-## Error Handling
-
-If JIRA API fails:
-
-1. Log error with stack trace to `logs/jira-integration.log`
-2. Create fallback record in `docs/jira-issues.md`
-3. Note failure in story/task file:
-   ```markdown
-   ## JIRA Integration
-   - Epic: ✅ EPIC-100 (created)
-   - Requirement: ❌ Failed (API timeout) — manual creation recommended
+   ```sh
+   node "$integration_cli" preview <story-id...>
    ```
 
-## Verification
+   The preview may search Jira for stable markers but never creates issues, creates issue links, or edits local records. Explain each create/reuse/recovery/blocked action and dependency-link candidate.
+4. Ask the user to confirm the displayed selection and actions with `AskUserQuestion`. Cancellation ends here; do not run the import command.
+5. Only after explicit confirmation, run the separate write action:
 
-After integration:
+   ```sh
+   node "$integration_cli" import <story-id...> --confirm
+   ```
 
-1. Check `logs/jira-integration.log` for errors
-2. Verify JIRA UI shows created tickets
-3. Confirm links between Epics, Requirements, Tasks
-4. Check that labels and priorities are correct
+   The CLI rechecks Jira before each action, creates or reuses one issue of configured `jira.issue_type` for each requested story, and writes the local link only after the issue is verified. Report each failed story and each dependency-link failure separately; never claim an uncertain create succeeded.
 
-## Next Steps
+## Issue and record contract
 
-- `/aw-architect` — Use Requirements created in JIRA
-- `/aw-design-system` — Reference Tasks in JIRA for development
-- `/aw-execute` — Work on tasks with JIRA Task IDs
+- Jira v3 issues use the configured issue type, an ADF description containing the story, acceptance-criterion text, and dependency references, and the exact `aw-story-<story-id>` label. Checkbox state is not sent as status.
+- `jira.epic_key` is an optional existing parent. No Epic, Requirement, placeholder, or task is created automatically.
+- A Jira site API URL supplies `/browse/<key>`. Scoped API bases require secret-free `jira.browse_base_url` before writes.
+- Records live in the current worktree at `docs/integrations/<story-id>.md` and contain only the Jira key and browse URL in the Jira section. Other provider data is preserved.
+- An unresolved pending create marker blocks another create. Never retry a possibly accepted request. After checking Jira and explicitly confirming no issue was created, a human may resolve the marker with:
 
-## Example Usage
+  ```sh
+  node "$integration_cli" resolve-pending <story-id> --confirm-not-created
+  ```
 
-```
-# Integrate with all PRD stories
-/aw-integrate-jira
-
-# Integrate with specific story
-/aw-integrate-jira s01
-```
+Do not change Jira status, synchronize lifecycle state, create remote dependency links outside a confirmed import, or delete issues. Jira lifecycle and PR synchronization belong to the later lifecycle story.
