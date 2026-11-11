@@ -52,7 +52,7 @@ Research → Design → Plan → Execute → Review → Ship
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   Unified Integration Config                 │
-│                src/config/integrations.yaml                 │
+│              .agent-workflow/integrations.yaml                  │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -79,7 +79,7 @@ Research → Design → Plan → Execute → Review → Ship
 
 ### Phase 1 : Configurateur centralisé
 
-**Fichier :** `src/config/integrations.yaml`
+**Fichier de configuration consommateur :** `.agent-workflow/integrations.yaml` (fichier utilisateur, créé uniquement s'il est absent)
 
 ```yaml
 integrations:
@@ -87,10 +87,9 @@ integrations:
 
   jira:
     enabled: false
-    api_url: "https://your-domain.atlassian.net"
-    api_token: "${JIRA_API_TOKEN}"
-    email: "${JIRA_EMAIL}"
-    project_key: "PROJ"
+    project_key: "YOUR_PROJECT_KEY"
+    issue_type: "Story"
+    status_names: { todo: "To Do", in_progress: "In Progress", in_review: "In Review", done: "Done" }
     epics:
       prefix: "EPIC"
     requirements:
@@ -121,9 +120,9 @@ integrations:
 ```
 
 **Actions :**
-- Créer le fichier `src/config/integrations.yaml`
-- Modifier les templates existants pour inclure la configuration
-- Ajouter des hooks de validation dans `/aw-help`
+- Créer `.agent-workflow/integrations.yaml` uniquement s'il est absent, sans le gérer lors des mises à jour
+- Garder les identifiants dans l'environnement : `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
+- Valider explicitement identité/projet/type avant d'activer Jira; ne jamais écrire de secrets dans YAML
 
 ### Phase 2 : Service d'intégration centralisé
 
@@ -153,7 +152,7 @@ Fonctionnalités :
 1. **`/aw-integrate-configure`**
    - Menu interactif pour activer/désactiver et configurer les intégrations
    - Valide les configurations (API tokens, URLs, etc.)
-   - Sauvegarde dans `.env*` et `src/config/integrations.yaml`
+   - Écrit les seuls paramètres sans secret dans `.agent-workflow/integrations.yaml`; ne modifie aucun fichier d'identifiants
 
 2. **`/aw-integrate-status`**
    - Affiche l'état actuel de chaque intégration
@@ -175,7 +174,7 @@ Fonctionnalités :
 ```markdown
 ## Phase 0 — Intégration Validation
 
-1. Vérifier les intégrations activées dans `src/config/integrations.yaml`
+1. Lire les paramètres éventuels dans `.agent-workflow/integrations.yaml`; une intégration absente/désactivée/incomplète ne bloque pas le pipeline
 2. Pour chaque intégration activée :
    - JIRA : Créer les Epics depuis le PRD
    - GitHub : Créer les issues depuis les stories
@@ -275,7 +274,7 @@ Si Telegram activé : Notification de succès
 ## Fichiers critiques à modifier/ créer
 
 ### Créés
-- `src/config/integrations.yaml`
+- `.agent-workflow/integrations.yaml` (consumer config; source template is `src/config/integrations.yaml`)
 - `src/services/integration-service.mjs`
 - `src/commands/aw-integrate-configure.md`
 - `src/commands/aw-integrate-status.md`

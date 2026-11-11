@@ -17,22 +17,27 @@ allowed-tools:
 
 Create GitHub issues and PRs to track work and automate development workflow.
 
+At the start of this command, resolve the consumer root; commands can run from a story worktree while `.agent-workflow` stays in the shared checkout:
+
+```sh
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+integration_config="$consumer_root/.agent-workflow/integrations.yaml"
+```
+
 ## Input
 
-- **GitHub Configuration**: Check `src/config/integrations.yml`
+- **GitHub Configuration**: Check `"$integration_config"`
   - Verify `github.enabled: true`
-  - Set API token, repo, default branch
+  - Keep credentials in the environment, never in the config
 - **Story ID** (optional): For linking specific stories to issues
 
 ## Workflow
 
 ### Phase 1: Validate Integration
 
-1. Check `github.enabled: true` in `src/config/integrations.yml`
-2. Verify environment variables:
-   - `GITHUB_TOKEN`
-   - `GITHUB_REPO`
-   - `GITHUB_DEFAULT_BRANCH`
+1. Check `github.enabled: true` in `"$integration_config"`
+2. Verify required GitHub environment variables without printing their values
 
 ### Phase 2: Create GitHub Issues
 

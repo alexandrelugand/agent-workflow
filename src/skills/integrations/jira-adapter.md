@@ -7,14 +7,18 @@ description: Create JIRA tickets (Epic, Requirement, Task) for stories and tasks
 
 You create JIRA tickets to track work in agent-workflow. Use during framing and planning phases.
 
+Before reading configuration or running validation from a story worktree, resolve the consumer root and installed runtime:
+
+```sh
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+integration_config="$consumer_root/.agent-workflow/integrations.yaml"
+integration_cli="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+```
+
 ## Configuration
 
-Read `src/config/integrations.yml` for project-specific configuration:
-- `api_url`: JIRA Cloud instance URL
-- `api_token`: JIRA API token (from environment variable)
-- `email`: JIRA account email
-- `project_key`: Project identifier (e.g., PROJ)
-- `epic_prefix`, `requirement_prefix`, `task_prefix`: Ticket type prefixes
+Read secret-free Jira settings from `"$integration_config"` (project key, configured issue type, and status names). Credentials are process-environment-only: `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`. Never place credentials in YAML or print them. Before Jira setup work, run `node "$integration_cli" validate`; leave Jira disabled until it succeeds.
 
 ## Workflow
 

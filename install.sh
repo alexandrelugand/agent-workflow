@@ -21,11 +21,15 @@ set -euo pipefail
 
 REPO="https://github.com/alexandrelugand/agent-workflow.git"
 
-# --- Resolve payload (src/) : local files, otherwise clone (curl|bash case) ---
+# Resolve local checkout or cached global payload before network fallback.
 SELF_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+CACHE="$HOME/.claude/agent-workflow"
 if [ -n "${SELF_DIR:-}" ] && [ -f "$SELF_DIR/src/commands/aw-prd.md" ]; then
   SRC="$SELF_DIR/src"
   PAYLOAD_ROOT="$SELF_DIR"
+elif { [ "${1:-}" = init ] || [ "${1:-}" = update ]; } && [ -f "$CACHE/src/commands/aw-prd.md" ] && [ -f "$CACHE/bin/aw-build.mjs" ]; then
+  SRC="$CACHE/src"
+  PAYLOAD_ROOT="$CACHE"
 else
   TMP="$(mktemp -d)"
   echo "→ Fetching agent-workflow…"
@@ -155,16 +159,31 @@ install_hooks() {
   echo "✅ Git hooks installed (core.hooksPath=.aw-hooks). Gates: no code without validated plan, no ship without review."
   echo "   Disable: git config --unset core.hooksPath"
 }
+install_runtime() {
+  mkdir -p .agent-workflow/runtime
+  cp "$SRC/services/integration-service.mjs" .agent-workflow/runtime/
+  cp "$SRC/services/integration-cli.mjs" .agent-workflow/runtime/
+  cp "$SRC/services/project-root.mjs" .agent-workflow/runtime/
+  cp "$SRC/services/jira-url.mjs" .agent-workflow/runtime/
+  [ -f .agent-workflow/integrations.yaml ] || cp "$SRC/config/integrations.yaml" .agent-workflow/integrations.yaml
+  local manifest=.agent-workflow/.aw-manifest f
+  touch "$manifest"
+  for f in runtime/integration-service.mjs runtime/integration-cli.mjs runtime/project-root.mjs runtime/jira-url.mjs; do
+    grep -qxF "$f" "$manifest" || echo "$f" >> "$manifest"
+  done
+}
 
 install_target() {
   case "$1" in
     claude)
       copy_tooling_claude "./.claude"
+      install_runtime
       sync_templates "$SRC"; drop_agents_md "$SRC"; wire_claude_md
       echo "✅ agent-workflow installed (Claude, project, version $VERSION)."
       echo "ℹ️  Commands: /aw-brain, /aw-prd … /aw-ship" ;;
     codex)
       copy_tooling_codex "./.codex"
+      install_runtime
       sync_templates "$SRC"; drop_agents_md "$SRC"   # AGENTS.md native for Codex, no CLAUDE.md
       echo "✅ agent-workflow installed (Codex, project, version $VERSION)."
       echo "ℹ️  Skills: aw-prd … aw-ship in .codex/skills." ;;
@@ -185,9 +204,16 @@ case "$MODE" in
   -g|--global)
     # Cache partagé (templates + AGENTS.md + installeur) pour `init` par projet.
     seed_cache() {
-      mkdir -p "$CACHE" "$CACHE/templates"
-      cp -r "$SRC/templates/"* "$CACHE/" || { echo "✗ Failed to copy templates"; exit 1; }
-      cp "$PAYLOAD_ROOT/AGENTS.md" "$CACHE/" || { echo "✗ Failed to copy AGENTS.md"; exit 1; }
+      mkdir -p "$CACHE"
+      payload_root_real="$(cd "$PAYLOAD_ROOT" && pwd -P)"
+      cache_root_real="$(cd "$CACHE" && pwd -P)"
+      [ "$payload_root_real" != "$cache_root_real" ] || return 0
+      mkdir -p "$CACHE/src"
+      cp -r "$SRC/." "$CACHE/src/" || { echo "✗ Failed to cache source payload"; exit 1; }
+      mkdir -p "$CACHE/bin"
+      cp "$PAYLOAD_ROOT/bin/aw-build.mjs" "$CACHE/bin/aw-build.mjs" || { echo "✗ Failed to cache Codex builder"; exit 1; }
+      cp "$SRC/AGENTS.md" "$CACHE/" || { echo "✗ Failed to copy AGENTS.md"; exit 1; }
+      cp "$SRC/AGENTS.md" "$CACHE/src/AGENTS.md" || { echo "✗ Failed to cache AGENTS.md"; exit 1; }
       cp "$PAYLOAD_ROOT/install.sh" "$CACHE/install.sh" 2>/dev/null \
         || cp "${BASH_SOURCE[0]:${0}}" "$CACHE/install.sh" 2>/dev/null || true
     }
@@ -207,7 +233,8 @@ case "$MODE" in
     ;;
 
   init)
-    local_src="$SRC"; [ -d "$local_src/templates" ] || local_src="$CACHE"
+    local_src="$SRC"; [ -d "$local_src/templates" ] || local_src="$CACHE/src"
+    install_runtime
     sync_templates "$local_src"; drop_agents_md "$local_src"
     case "$TARGET" in claude|all) wire_claude_md ;; esac   # CLAUDE.md only if Claude is target
     echo "✅ templates + rules added to $(pwd) (target $TARGET)"

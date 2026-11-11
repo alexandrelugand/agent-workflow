@@ -17,11 +17,20 @@ allowed-tools:
 
 Create JIRA tickets to track work from agent-workflow stories through to task execution.
 
+At the start of this command, resolve the consumer root; commands run from story worktrees while `.agent-workflow` stays in the shared checkout:
+
+```sh
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+integration_config="$consumer_root/.agent-workflow/integrations.yaml"
+integration_cli="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+```
+
 ## Input
 
-- **JIRA Configuration**: Check `src/config/integrations.yml`
-  - Verify `jira.enabled: true`
-  - Set API URL, token, email
+- **JIRA Configuration**: Check `"$integration_config"`
+  - Keep `jira.enabled: false` until explicit validation succeeds
+  - Credentials come only from the four required environment variables
 - **Story ID** (optional): For creating tasks linked to specific stories
   - If not provided, integrates with current PRD story breakdown
 
@@ -29,11 +38,9 @@ Create JIRA tickets to track work from agent-workflow stories through to task ex
 
 ### Phase 1: Validate Integration Config
 
-1. Check if JIRA is enabled in `src/config/integrations.yml`
-2. Verify environment variables are set:
-   - `JIRA_API_TOKEN`
-   - `JIRA_EMAIL`
-   - `JIRA_PROJECT_KEY`
+1. Check `"$integration_config"` for secret-free project and issue-type settings
+2. Run `node "$integration_cli" validate` through `/aw-integrate-configure`; keep Jira disabled until successful validation
+3. Verify `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_API_TOKEN`, and `JIRA_EMAIL` are present in the environment (do not print values)
 
 ### Phase 2: Integrate with PRD Stories
 
@@ -114,33 +121,9 @@ Example update:
 2. Implement authentication logic
 ```
 
-## JIRA API Usage
+## Jira Setup Boundary
 
-Use JIRA REST API v3 with Basic Auth:
-
-```bash
-# Get API token
-export JIRA_API_TOKEN="your-token"
-export JIRA_EMAIL="your-email@example.com"
-export JIRA_API_URL="https://your-domain.atlassian.net"
-
-# Auth header
-AUTH="$(echo -n "${JIRA_EMAIL}:${JIRA_API_TOKEN}" | base64)"
-
-# Create Epic
-curl -X POST "${JIRA_API_URL}/rest/api/3/issue" \
-  -H "Authorization: Basic ${AUTH}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "fields": {
-      "project": {"key": "PROJ"},
-      "issuetype": {"name": "Epic"},
-      "summary": "User authentication",
-      "description": "...",
-      "labels": ["epic", "#prd"]
-    }
-  }'
-```
+Jira setup and explicit pre-enable connection validation belong to `/aw-integrate-configure`, which invokes `node "$integration_cli" validate` using the consumer-root runtime path. Read only secret-free settings from `"$integration_config"`; credentials come from process environment and must never be copied into commands, files, logs, or output. Keep Jira disabled until validation succeeds.
 
 ## Output Files
 

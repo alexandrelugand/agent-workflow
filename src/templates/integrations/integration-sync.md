@@ -247,7 +247,7 @@ Branch: <branch-name>
 
 ### Notification Configuration
 
-Configure which events trigger notifications in `src/config/integrations.yaml`:
+Configure notification preferences in `.agent-workflow/integrations.yaml`:
 
 ```yaml
 telegram:
@@ -287,7 +287,7 @@ async handleCustomEvent(event, context) {
 Register webhooks for real-time events:
 
 ```yaml
-# src/config/integrations.yaml
+# Example provider settings in `.agent-workflow/integrations.yaml`
 github:
   webhooks_enabled: true
   webhook_url: "https://your-domain.com/webhook/github"
