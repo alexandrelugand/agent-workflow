@@ -56,4 +56,4 @@ If the config or runtime is absent, stop without making a Jira request. Credenti
   node "$integration_cli" resolve-pending <story-id> --confirm-not-created
   ```
 
-Do not change Jira status, synchronize lifecycle state, create remote dependency links outside a confirmed import, or delete issues. Jira lifecycle and PR synchronization belong to the later lifecycle story.
+Do not change Jira status, synchronize lifecycle state, create remote dependency links outside a confirmed import, or delete issues. Execution and review commands manage lifecycle separately; `/aw-ship` may request Done only after it verifies the PR state is exactly `MERGED`.
