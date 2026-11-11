@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import IntegrationService from './integration-service.mjs';
@@ -62,15 +62,52 @@ export async function validateJira({ fetchImpl = globalThis.fetch, env = process
   return { valid: true, projectKey, issueType };
 }
 
-export async function getStatus({ workingDirectory = process.cwd() } = {}) {
-  const root = resolveConsumerRoot(import.meta.url, workingDirectory);
-  const service = new IntegrationService(join(root, '.agent-workflow/integrations.yaml'), { projectRoot: root });
-  const writeLog = console.log;
-  console.log = () => {};
-  try {
-    await service.init();
-    return service.getIntegrationStatus();
-  } finally { console.log = writeLog; }
+function listLocalJiraLinks(worktreeRoot) {
+  const directory = join(worktreeRoot, 'docs', 'integrations');
+  if (!existsSync(directory)) return { links: [], warning: null };
+  let entries;
+  try { entries = readdirSync(directory, { withFileTypes: true }); }
+  catch { return { links: [], warning: 'Local Jira integration records are unavailable' }; }
+  const links = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const match = entry.name.match(/^(s\d+-[a-z0-9]+(?:-[a-z0-9]+)*)\.md$/);
+    if (!match) continue;
+    const storyId = match[1];
+    try {
+      const record = readIntegrationRecord(worktreeRoot, storyId);
+      if (record.jira) links.push({ storyId, issueKey: record.jira.key });
+    } catch {
+      links.push({ storyId, issueKey: null, localUnavailable: true });
+    }
+  }
+  links.sort((left, right) => left.storyId < right.storyId ? -1 : left.storyId > right.storyId ? 1 : 0);
+  return { links, warning: null };
+}
+
+export async function getStatus({ workingDirectory = process.cwd(), fetchImpl = globalThis.fetch, env = process.env } = {}) {
+  const { worktreeRoot, service } = await createContext({ workingDirectory, fetchImpl, env }, { requireJira: false });
+  const integrationStatus = service.getIntegrationStatus();
+  const local = listLocalJiraLinks(worktreeRoot);
+  const stories = [];
+  for (const link of local.links) {
+    if (link.localUnavailable) {
+      stories.push({ storyId: link.storyId, issueKey: null, status: 'unavailable', reason: 'Local Jira link is invalid or ambiguous' });
+    } else if (!integrationStatus.jira.enabled) {
+      stories.push({ storyId: link.storyId, issueKey: link.issueKey, status: 'unavailable', reason: 'Jira is disabled or incompletely configured' });
+    } else {
+      try {
+        const issue = await service.getJiraIssueStatus(link.issueKey);
+        stories.push({ storyId: link.storyId, issueKey: link.issueKey, status: issue.status });
+      } catch {
+        stories.push({ storyId: link.storyId, issueKey: link.issueKey, status: 'unavailable', reason: 'Jira status fetch failed' });
+      }
+    }
+  }
+  return {
+    ...integrationStatus,
+    jira: { ...integrationStatus.jira, stories, ...(local.warning ? { warning: local.warning } : {}) }
+  };
 }
 
 function requestedIds(ids) {
@@ -205,7 +242,7 @@ function jiraUrlOrNull(service, key) {
   try { return service.getJiraBrowseUrl(key); } catch { return null; }
 }
 
-async function createContext(options = {}) {
+async function createContext(options = {}, { requireJira = true } = {}) {
   const worktreeRoot = resolve(options.workingDirectory || process.cwd());
   const consumerRoot = options.consumerRoot ? resolve(options.consumerRoot) : resolveConsumerRoot(import.meta.url, worktreeRoot);
   const service = new IntegrationService(options.configPath || join(consumerRoot, '.agent-workflow/integrations.yaml'), {
@@ -217,7 +254,7 @@ async function createContext(options = {}) {
   const writeLog = console.log;
   console.log = () => {};
   try { await service.init(); } finally { console.log = writeLog; }
-  if (!service.getIntegrationStatus().jira.enabled) throw new Error('Jira integration is disabled or incompletely configured');
+  if (requireJira && !service.getIntegrationStatus().jira.enabled) throw new Error('Jira integration is disabled or incompletely configured');
   return { worktreeRoot, consumerRoot, service };
 }
 
@@ -383,6 +420,64 @@ export async function unlinkJiraStory({ storyId, ...options } = {}) {
   return { storyId, unlinked: updated.removed, key: record.jira.key, remoteIssueDeleted: false };
 }
 
+const lifecycleStatuses = new Set(['in_progress', 'in_review', 'blocked', 'done']);
+
+export async function syncJiraLifecycle({ storyId, status, pullRequestUrl = null, merged = false, ...options } = {}) {
+  requestedIds([storyId]);
+  if (!lifecycleStatuses.has(status)) throw new Error('Provide a supported Jira lifecycle status');
+  if (typeof merged !== 'boolean') throw new Error('Invalid merged-PR proof');
+  if (status === 'done' && (merged !== true || typeof pullRequestUrl !== 'string' || !pullRequestUrl.trim())) {
+    return { storyId, synced: false, warning: 'Jira Done requires a verified merged PR URL' };
+  }
+  if (merged && status !== 'done') throw new Error('Merged-PR proof is only valid for Jira Done');
+  if (pullRequestUrl !== null && (typeof pullRequestUrl !== 'string' || !pullRequestUrl.trim())) throw new Error('Invalid pull request URL');
+  if (pullRequestUrl && !['in_review', 'done'].includes(status)) throw new Error('Pull request links are valid only during review or verified delivery');
+
+  const worktreeRoot = resolve(options.workingDirectory || process.cwd());
+  const record = readIntegrationRecord(worktreeRoot, storyId);
+  if (!record.jira) return { storyId, skipped: true, reason: 'Story has no Jira link' };
+  const { service } = await createContext(options, { requireJira: false });
+  if (!service.getIntegrationStatus().jira.enabled) {
+    return { storyId, issueKey: record.jira.key, skipped: true, reason: 'Jira is disabled or incompletely configured' };
+  }
+
+  const warnings = [];
+  let normalizedPullRequestUrl = pullRequestUrl;
+  if (pullRequestUrl) {
+    try { normalizedPullRequestUrl = service.validateJiraPullRequestUrl(pullRequestUrl); }
+    catch {
+      if (status === 'done') return { storyId, issueKey: record.jira.key, targetStatus: status, synced: false, warning: 'Invalid PR URL; Jira Done was not attempted' };
+      warnings.push('Jira PR link failed (invalid HTTPS pull request URL)');
+      normalizedPullRequestUrl = null;
+    }
+  }
+  let pullRequestLinked = null;
+  if (normalizedPullRequestUrl) {
+    try {
+      pullRequestLinked = (await service.linkJiraPullRequest(record.jira.key, { url: normalizedPullRequestUrl, merged: status === 'done' })).linked;
+    } catch (error) {
+      warnings.push(`Jira PR link failed${Number.isInteger(error?.status) ? ` (HTTP ${error.status})` : ''}`);
+    }
+  }
+  let transition = null;
+  try {
+    transition = await service.transitionJiraIssue(record.jira.key, status);
+    if (transition.warning) warnings.push(transition.warning);
+  } catch (error) {
+    warnings.push(`Jira status transition failed${Number.isInteger(error?.status) ? ` (HTTP ${error.status})` : ''}`);
+  }
+  return {
+    storyId,
+    issueKey: record.jira.key,
+    targetStatus: status,
+    synced: warnings.length === 0 && !transition?.skipped,
+    ...(transition ? { transition: { transitioned: transition.transitioned, ...(transition.alreadyAtTarget ? { alreadyAtTarget: true } : {}) } } : {}),
+    ...(transition?.skipped ? { skipped: true, reason: transition.reason } : {}),
+    ...(pullRequestUrl ? { pullRequestLinked: pullRequestLinked === true } : {}),
+    ...(warnings.length ? { warnings } : {})
+  };
+}
+
 export async function resolvePendingJiraImport({ storyId, confirmNotCreated = false, ...options } = {}) {
   requestedIds([storyId]);
   if (!confirmNotCreated) throw new Error('Explicit confirmation is required to resolve pending Jira state');
@@ -394,7 +489,7 @@ export async function resolvePendingJiraImport({ storyId, confirmNotCreated = fa
 }
 
 function usage() {
-  return 'Usage: node integration-cli.mjs <validate|status|preview <story-id...>|import <story-id...> --confirm|link <story-id> <jira-key>|unlink <story-id>|resolve-pending <story-id> --confirm-not-created>';
+  return 'Usage: node integration-cli.mjs <validate|status|preview <story-id...>|import <story-id...> --confirm|link <story-id> <jira-key>|unlink <story-id>|lifecycle <story-id> <in_progress|in_review|blocked|done> [--pr-url <url>] [--merged]|resolve-pending <story-id> --confirm-not-created>';
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -407,6 +502,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (action === 'link' && args.length === 2) return linkJiraStory({ storyId: args[0], issueKey: args[1] });
     if (action === 'unlink' && args.length === 1) return unlinkJiraStory({ storyId: args[0] });
     if (action === 'resolve-pending' && args.length === 2) return resolvePendingJiraImport({ storyId: args[0], confirmNotCreated: args.includes('--confirm-not-created') });
+    if (action === 'lifecycle' && args.length >= 2) {
+      const [storyId, status, ...flags] = args;
+      let pullRequestUrl = null;
+      let merged = false;
+      for (let index = 0; index < flags.length; index++) {
+        if (flags[index] === '--pr-url' && flags[index + 1] && pullRequestUrl === null) pullRequestUrl = flags[++index];
+        else if (flags[index] === '--merged' && !merged) merged = true;
+        else throw new Error(usage());
+      }
+      return syncJiraLifecycle({ storyId, status, pullRequestUrl, merged });
+    }
     throw new Error(usage());
   };
   run().then(result => {

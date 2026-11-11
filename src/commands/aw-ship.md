@@ -20,8 +20,22 @@ If the file is missing or the command fails, STOP immediately: "Ship blocked —
 
 Then proceed:
 1. Without switching branches, commit docs/reviews/<id>.md on the already verified feature branch if not already committed (the PR must carry its review). Then verify the tests pass. Failing tests → stop.
-2. If a PR for feature/<id> already exists, don't open a duplicate — check its state: MERGED → jump straight to the Cleanup step (confirming the deployment on the way); OPEN → continue. Otherwise push the branch and open a clean PR from feature/<id> to the default branch: clear title, structured description (what, why, how to test), readable diff. Include the review verdict (max severity + findings summary) in the PR body.
+2. If a PR for `feature/<id>` already exists, do not open a duplicate; read its `state` and `url`: `OPEN` → continue and keep Jira In Review; `MERGED` → verify the merge, synchronize Jira Done best-effort, then continue to Cleanup; a closed-unmerged PR is not complete and does not qualify for Cleanup. Otherwise push and open a clean PR, capturing its URL.
 3. Read the ship strategy from AGENTS.md ("Ship strategy" section). No section, or no explicit `auto` → the mode is manual.
+
+## Jira lifecycle — best effort
+
+From the verified story worktree, resolve the shared runtime and update only the linked issue:
+
+```sh
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+```
+
+After creating or finding an **open** PR, run `node "$runtime" lifecycle "<id>" in_review --pr-url "<url>"`. The PR link is idempotent; an open/manual PR stays In Review. For an existing or auto-merged PR, first run `gh pr view feature/<id> --json state,url,mergedAt` and require `state` to equal exactly `MERGED`; only then run `node "$runtime" lifecycle "<id>" done --pr-url "<url>" --merged`. This updates the same Jira remote link with the verified merged outcome.
+
+Show any `warnings`, `synced: false`, or CLI error as a Jira sync warning and continue the local ship flow. Missing runtime, disabled/incomplete Jira, or no local Jira link is a normal skip. A Jira failure never blocks the manual-merge rule or Cleanup; an open or closed-unmerged PR never triggers Done.
 
 ## Step 4 — Merge (per the ship strategy)
 

@@ -40,12 +40,13 @@ Before reading integration settings from a story worktree, locate the consumer r
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
 consumer_root="$(dirname "$git_common_dir")"
 integration_config="$consumer_root/.agent-workflow/integrations.yaml"
+integration_cli="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
 if [ ! -f "$integration_config" ]; then
   consumer_root=""
 fi
 ```
 
-If `consumer_root` is empty, the optional integration runtime is not installed; skip this phase and continue local work. Otherwise read `"$consumer_root/.agent-workflow/integrations.yaml"` and invoke installed integration commands via `"$consumer_root/.agent-workflow/runtime/"`.
+If `consumer_root` is empty or the runtime file is absent, skip optional integration work and continue locally. Otherwise read the shared config and use `integration_cli` for installed commands. Lifecycle calls must run with the verified story worktree as the current directory so the runtime reads that worktree's local Jira link.
 ### Jira Integration
 
 Jira setup is optional. Do not import PRD/backlog stories automatically or create Epics, Requirements, Tasks, or placeholder records. After a user explicitly selects full IDs present in the current worktree's `docs/stories.md`, use `/aw-integrate-jira <story-id...>` for a read-only preview and separate confirmation before issue writes. Keep Jira key/URL references only in `docs/integrations/<story-id>.md`.
@@ -75,7 +76,17 @@ If docs/plans/<id>.md doesn't exist, produce it following the aw-plan contract: 
 CHECKPOINT — mandatory, whether the plan is new or already existed. If the plan's frontmatter already says `validated: yes`, continue. Otherwise present the plan summary (tasks, files touched, test strategy) and ask via AskUserQuestion: "Validate this plan?" — options: Validate / Modify / Stop. An existing plan file does NOT count as validated. On Validate, set `validated: yes` in the plan's frontmatter. Anything else: don't touch the marker, don't continue.
 
 ## Phase 4 — Execute
-Fail-closed: docs/plans/<id>.md must carry `validated: yes` in its frontmatter — missing means back to the Phase 3 checkpoint. Then delegate to the `implementer` subagent exactly as /aw-execute does, with the verified absolute worktree as its working directory: no red-first ceremony and no invariant mutations, focused suite per task and the full suite plus the end-to-end once at the end, the type check after the last edit, no branch switching, only what the plan specifies; fix mode first if a blocking review exists. Capture its summary.
+Fail-closed: `docs/plans/<id>.md` must carry `validated: yes`; missing means back to the Phase 3 checkpoint. Before implementation starts, from the verified worktree run:
+
+```sh
+worktree="<absolute .worktrees/<id>>"
+git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" in_progress); fi
+```
+
+Disabled/incomplete Jira, an unlinked story, or absent runtime is a normal skip. Surface any warnings, `synced: false`, or CLI error, then continue. Delegate to the `implementer` exactly as /aw-execute does: no red-first ceremony or invariant mutations, focused suite per task and full suite plus end-to-end once at the end, type check after the last edit, no branch switching, only plan scope. Capture its summary.
 
 **Telegram Notifications** (if enabled):
 - Send progress updates during task execution
@@ -83,6 +94,18 @@ Fail-closed: docs/plans/<id>.md must carry `validated: yes` in its frontmatter �
 - Alert on compilation errors
 
 ## Phase 5 — Review
+
+Before dispatching the reviewer, from the verified worktree run the same runtime resolution with target `in_review`:
+
+```sh
+worktree="<absolute .worktrees/<id>>"
+git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" in_review); fi
+```
+
+Disabled/incomplete Jira, an unlinked story, or absent runtime is a normal skip. Surface sync warnings/errors and continue the independent review.
 Delegate to the `reviewer` subagent exactly as /aw-review does: fresh context, story diff `git diff <default-branch>...feature/<id>`, test suite run by the reviewer, verdict ending with the exact `Max severity:` and `Ship allowed:` lines. Write the report to docs/reviews/<id>.md.
 
 **Telegram Notifications** (if enabled):
@@ -91,10 +114,23 @@ Delegate to the `reviewer` subagent exactly as /aw-review does: fresh context, s
 - Notify on critical issues
 
 
+If the verdict is `Ship allowed: no`, before the fix loop or stop, best-effort run from the verified worktree:
+
+```sh
+worktree="<absolute .worktrees/<id>>"
+git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" blocked); fi
+```
+
+An unconfigured `blocked` status is skipped; Jira warnings never soften or open the review gate, and Done is never requested here.
 Gate: verdict `Ship allowed: no` → go back to Phase 4 in fix mode. Maximum 2 fix loops; still blocked after that → stop and report the open findings. Never soften a verdict to move on.
 
 ## Phase 6 — Ship
 CHECKPOINT — review passed: show the verdict and ask via AskUserQuestion: "Ship now?" — options: Ship / Not now. Only an explicit Ship proceeds; then run /aw-ship's flow: mechanical gate (`grep -q '^Ship allowed: yes' docs/reviews/<id>.md`), tests on the branch, push, PR — then the project's ship strategy (manual, the default: stop at the PR; auto: merge, deploy, confirm live, clean up the branch once the merge is proven).
+
+Jira lifecycle remains best effort within `/aw-ship`: link an opened PR and keep its issue In Review; after `/aw-ship` verifies the PR state is exactly `MERGED`, request `lifecycle <id> done --pr-url <url> --merged`. Never send Done for an open/manual PR. Surface Jira warnings but continue the existing ship/cleanup rules.
 
 **Telegram Notifications** (if enabled):
 - Send PR created notification

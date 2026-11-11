@@ -390,3 +390,171 @@ test('unavailable or denied Jira dependency linking is reported without a link w
     assert.deepEqual(await denied.linkJiraStories('DEMO-10', 'DEMO-20'), { linked: false, reason: 'Issue-link permission denied' });
   } finally { file.clean(); }
 });
+
+test('configured Jira status names resolve the available destination and post its transition ID', async () => {
+  const file = fixture(jiraConfig(true, '    status_names:\n      in_progress: "Doing"\n      blocked: "Blocked"\n'));
+  const requests = [];
+  try {
+    const service = await activeService(file, async (url, options = {}) => {
+      requests.push({ url, options });
+      if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'To Do' } } });
+      if (url.endsWith('/transitions') && options.method !== 'POST') return jiraResponse({ transitions: [
+        { id: '9', name: 'Start work', to: { name: 'Doing' } },
+        { id: '10', name: 'Close issue', to: { name: 'Closed' } }
+      ] });
+      if (url.endsWith('/transitions') && options.method === 'POST') return jiraNoBody(204);
+      throw new Error('unexpected synthetic request');
+    });
+    const result = await service.transitionJiraIssue('DEMO-17', 'in_progress');
+    assert.deepEqual(service.config.integrations.jira.status_names, { in_progress: 'Doing', blocked: 'Blocked' });
+    assert.deepEqual(result, { transitioned: true, from: 'To Do', status: 'Doing' });
+    assert.deepEqual(JSON.parse(requests.at(-1).options.body), { transition: { id: '9' } });
+  } finally { file.clean(); }
+});
+
+test('default Jira status mapping uses the returned transition ID', async () => {
+  const file = fixture(jiraConfig(true));
+  let posted;
+  try {
+    const service = await activeService(file, async (url, options = {}) => {
+      if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'In Progress' } } });
+      if (url.endsWith('/transitions')) {
+        if (options.method === 'POST') { posted = JSON.parse(options.body); return jiraNoBody(204); }
+        return jiraResponse({ transitions: [{ id: '42', name: 'Review', to: { name: 'In Review' } }] });
+      }
+      throw new Error('unexpected synthetic request');
+    });
+    const result = await service.transitionJiraIssue('DEMO-17', 'in_review');
+    assert.deepEqual(result, { transitioned: true, from: 'In Progress', status: 'In Review' });
+    assert.deepEqual(posted, { transition: { id: '42' } });
+  } finally { file.clean(); }
+});
+
+test('already-current Jira status does not request or post a transition', async () => {
+  const file = fixture(jiraConfig(true));
+  let requests = 0;
+  try {
+    const service = await activeService(file, async () => {
+      requests++;
+      return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'In Progress' } } });
+    });
+    const result = await service.transitionJiraIssue('DEMO-17', 'in_progress');
+    assert.deepEqual(result, { transitioned: false, alreadyAtTarget: true, status: 'In Progress' });
+    assert.equal(requests, 1);
+  } finally { file.clean(); }
+});
+
+test('missing or ambiguous Jira destination transitions are reported without a POST', async t => {
+  for (const [name, transitions, warning] of [
+    ['missing', [], /no available transition/],
+    ['ambiguous', [{ id: '1', to: { name: 'In Progress' } }, { to: { name: 'In Progress' } }], /multiple available transitions/]
+  ]) {
+    await t.test(name, async () => {
+      const file = fixture(jiraConfig(true));
+      const requests = [];
+      try {
+        const service = await activeService(file, async (url, options = {}) => {
+          requests.push({ url, options });
+          if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'To Do' } } });
+          return jiraResponse({ transitions });
+        });
+        const result = await service.transitionJiraIssue('DEMO-17', 'in_progress');
+        assert.match(result.warning, warning);
+        assert.equal(requests.some(request => request.options.method === 'POST'), false);
+      } finally { file.clean(); }
+    });
+  }
+});
+
+test('blocked Jira transition is skipped without a configured mapping or request', async () => {
+  const file = fixture(jiraConfig(true));
+  let requests = 0;
+  try {
+    const service = await activeService(file, async () => { requests++; throw new Error('unexpected request'); });
+    const result = await service.transitionJiraIssue('DEMO-17', 'blocked');
+    assert.deepEqual(result, { transitioned: false, skipped: true, reason: 'blocked status is not configured' });
+    assert.equal(requests, 0);
+  } finally { file.clean(); }
+});
+
+test('configured blocked Jira status uses the discovered transition ID', async () => {
+  const file = fixture(jiraConfig(true, '    status_names:\n      blocked: "Blocked"\n'));
+  let posted;
+  try {
+    const service = await activeService(file, async (url, options = {}) => {
+      if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'In Review' } } });
+      if (options.method === 'POST') { posted = JSON.parse(options.body); return jiraNoBody(204); }
+      return jiraResponse({ transitions: [{ id: '17', to: { name: 'Blocked' } }] });
+    });
+    const result = await service.transitionJiraIssue('DEMO-17', 'blocked');
+    assert.deepEqual(result, { transitioned: true, from: 'In Review', status: 'Blocked' });
+    assert.deepEqual(posted, { transition: { id: '17' } });
+  } finally { file.clean(); }
+});
+
+test('Jira status lookup returns the current remote status only', async () => {
+  const file = fixture(jiraConfig(true));
+  let requestedUrl;
+  try {
+    const service = await activeService(file, async url => {
+      requestedUrl = url;
+      return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'In Review' } } });
+    });
+    assert.deepEqual(await service.getJiraIssueStatus('DEMO-17'), { key: 'DEMO-17', status: 'In Review' });
+    assert.match(requestedUrl, /fields=key,status,project$/);
+  } finally { file.clean(); }
+});
+
+test('Jira status lookup rejects an empty remote status', async () => {
+  const file = fixture(jiraConfig(true));
+  try {
+    const service = await activeService(file, async () => jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: '  ' } } }));
+    await assert.rejects(service.getJiraIssueStatus('DEMO-17'), /Jira issue status is unavailable/);
+  } finally { file.clean(); }
+});
+
+test('Jira PR remote links use a stable global ID and record merged state', async () => {
+  const file = fixture(jiraConfig(true));
+  const bodies = [];
+  try {
+    const service = await activeService(file, async (requestUrl, options = {}) => {
+      if (requestUrl.endsWith('?fields=key,issuetype,project,issuelinks')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
+      bodies.push(JSON.parse(options.body));
+      return jiraNoBody(201);
+    });
+    const url = 'https://github.com/acme/agent-workflow/pull/42';
+    await service.linkJiraPullRequest('DEMO-17', { url });
+    await service.linkJiraPullRequest('DEMO-17', { url, merged: true });
+    assert.equal(bodies[0].globalId, bodies[1].globalId);
+    assert.equal(bodies[0].object.status.resolved, false);
+    assert.equal(bodies[1].object.status.resolved, true);
+    assert.equal(bodies[1].object.status.title, 'Merged');
+    assert.equal(bodies[1].object.url, url);
+  } finally { file.clean(); }
+});
+
+test('Jira PR remote-link operation rejects unsafe or non-pull URLs before requesting', async () => {
+  const file = fixture(jiraConfig(true));
+  let requests = 0;
+  try {
+    const service = await activeService(file, async () => { requests++; throw new Error('unexpected request'); });
+    await assert.rejects(service.linkJiraPullRequest('DEMO-17', { url: 'http://github.com/acme/repo/pull/42' }), /valid HTTPS pull request URL/);
+    await assert.rejects(service.linkJiraPullRequest('DEMO-17', { url: 'https://user:pass@github.com/acme/repo/pull/42' }), /valid HTTPS pull request URL/);
+    await assert.rejects(service.linkJiraPullRequest('DEMO-17', { url: 'https://github.com/acme/repo/issues/42' }), /valid HTTPS pull request URL/);
+    assert.equal(requests, 0);
+  } finally { file.clean(); }
+});
+
+test('Jira PR link refuses an issue outside the configured project', async () => {
+  const file = fixture(jiraConfig(true));
+  const requests = [];
+  try {
+    const service = await activeService(file, async (url, options = {}) => {
+      requests.push({ url, options });
+      return jiraResponse({ key: 'OTHER-17', fields: { project: { key: 'OTHER' } } });
+    });
+    await assert.rejects(service.linkJiraPullRequest('DEMO-17', { url: 'https://github.com/acme/repo/pull/42' }), /not available in the configured project/);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].options.method, 'GET');
+  } finally { file.clean(); }
+});

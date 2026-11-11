@@ -26,11 +26,15 @@ integrations:
       in_progress: "In Progress"
       in_review: "In Review"
       done: "Done"
+      # Optional; omit unless this workflow has a matching transition.
+      # blocked: "Blocked"
 ```
 
 Run `/aw-integrate-configure` to execute explicit identity, project, and issue-type validation. Validation does not enable Jira; set `jira.enabled: true` only after successful validation. Missing, disabled, or incomplete Jira remains request-free and does not block local work.
 
-Check `/aw-integrate-status` for a redacted status summary. It never displays configuration values, credential values, request headers, payloads, or response bodies.
+The names are Jira destination statuses, not transition IDs; the runtime discovers the available transition for each issue. `blocked` is optional and is attempted only after a rejected review when configured and available.
+
+`/aw-integrate-status` shows linked issue keys and fetched Jira status, with failed reads marked unavailable. It never displays configuration values, credential values, request headers, payloads, response bodies, or Jira URLs.
 
 ## Other optional integrations
 
