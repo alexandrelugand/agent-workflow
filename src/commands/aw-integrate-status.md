@@ -6,7 +6,7 @@ allowed-tools:
 ---
 # aw-integrate-status — Redacted integration status
 
-Show only the installed runtime's safe integration summary. Do not inspect or print provider configuration, environment-variable values, request/response data, URLs, tokens, headers, or issue payloads.
+Show only the installed runtime's safe integration summary. Do not inspect or print provider configuration, environment-variable values, request/response bodies, Jira URLs, tokens, headers, or issue payloads. The safe Jira story fields are story ID, issue key, fetched status, and a generic unavailable reason.
 
 ## Load installed runtime
 
@@ -25,14 +25,21 @@ done
 node "$consumer_root/.agent-workflow/runtime/integration-cli.mjs" status
 ```
 
-The runtime emits JSON containing only the global enabled flag and each provider's `enabled` and `configured` booleans. Status does not contact Jira or any other provider. Missing or disabled Jira is normal and does not block local work.
+The runtime emits JSON with global/provider `enabled` and `configured` flags plus one entry per local Jira link: issue key and the status fetched from Jira. This command makes read-only Jira status requests when enabled and configured; a failed fetch is shown as `unavailable`, never inferred. Disabled/incomplete Jira performs no request and remains optional.
 
 Example safe output:
 
 ```json
 {
   "enabled": true,
-  "jira": { "enabled": false, "configured": false },
+  "jira": {
+    "enabled": true,
+    "configured": true,
+    "stories": [
+      { "storyId": "s02-jira-import", "issueKey": "PROJ-42", "status": "In Progress" },
+      { "storyId": "s03-jira-lifecycle", "issueKey": "PROJ-43", "status": "unavailable", "reason": "Jira status fetch failed" }
+    ]
+  },
   "github": { "enabled": false, "configured": false },
   "telegram": { "enabled": false, "configured": false }
 }

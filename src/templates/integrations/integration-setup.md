@@ -25,13 +25,17 @@ integrations:
       in_progress: "In Progress"
       in_review: "In Review"
       done: "Done"
+      # Optional; omit unless this workflow has a matching transition.
+      # blocked: "Blocked"
 ```
 
 Use `/aw-integrate-configure` to run the explicit Jira identity, project, and issue-type check while the integration is still disabled. Validation does not enable configuration. Enable `jira.enabled` only after successful validation. Missing, disabled, or incomplete Jira remains request-free and does not block ordinary local work.
 
-Use `/aw-integrate-status` for a redacted status summary. Never print or log credentials, authorization headers, raw provider responses, request payloads, or raw configuration.
+The names are Jira destination statuses, not transition IDs; the runtime discovers the available transition for each issue. `blocked` is optional and is attempted only after a rejected review when configured and available.
+
+`/aw-integrate-status` shows linked issue keys and fetched Jira status, with failed reads marked unavailable. Never print or log credentials, authorization headers, raw provider responses, request payloads, raw configuration, or Jira URLs.
 
 ## Other providers
 For GitHub, set `github.repo` in `.agent-workflow/integrations.yaml` to the non-secret `owner/repository` identifier and provide `GITHUB_TOKEN` in the process environment or a user-managed secret store. The starter config supplies `https://api.github.com` as `github.api_url`; do not store the token in YAML.
 
-The shared optional configuration is `.agent-workflow/integrations.yaml`. Keep provider credentials in environment variables or a user-managed secret store; do not put secrets or environment-variable expansions in YAML. This Jira setup story does not add provider-specific network validation or issue lifecycle behavior.
+Lifecycle sync is separate from configuration: it uses the configured Jira destination names, discovers issue-specific transitions, and keeps local work fail-soft when Jira is unavailable.

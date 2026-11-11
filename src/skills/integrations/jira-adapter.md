@@ -5,7 +5,7 @@ description: Preview and import explicitly selected stories as one configured Ji
 
 # Jira Adapter Skill
 
-Jira import is explicit and story-scoped. Never import a PRD or backlog automatically, create placeholders, split a story into Epic/Requirement/Task tickets, transfer checkbox state, or mirror Jira lifecycle status.
+Jira import is explicit and story-scoped. Never import a PRD or backlog automatically, create placeholders, split a story into Epic/Requirement/Task tickets, transfer checkbox state, or infer remote status from local files.
 
 ## Configuration and runtime
 
@@ -21,6 +21,10 @@ integration_cli="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
 Read only secret-free settings from the config. Credentials come from `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in the process environment. Never print or store their values. Jira must remain disabled until `/aw-integrate-configure` validates the site, identity, project, and configured issue type.
 
 `jira.issue_type` determines the created issue type. Optional `jira.epic_key` names an existing parent and never causes an Epic to be created. A Jira site API URL is enough to build `/browse/<key>`; a scoped API base requires the optional secret-free `jira.browse_base_url` before writes.
+
+## Lifecycle synchronization
+
+The shared runtime resolves configured destination names through each linked issue's available Jira transitions. Execution requests `in_progress`; review requests `in_review` and may request optional `blocked` after rejection; only `/aw-ship` may request `done`, after it verifies the PR is merged. PR remote links use a stable ID and are updated rather than duplicated. Lifecycle Jira errors are warnings; disabled/incomplete Jira stays request-free. `/aw-integrate-status` and `/aw-status` read Jira's actual status and report fetch failures as unavailable.
 
 ## Explicit import workflow
 
@@ -54,4 +58,4 @@ node "$integration_cli" resolve-pending <story-id> --confirm-not-created
 
 For one existing Jira issue, `/aw-integrate-link <story-id> <jira-key> jira` validates the project and configured type and refuses to replace a different local key. `/aw-integrate-unlink <story-id> jira` removes only the local Jira section and never deletes the Jira issue.
 
-Do not implement status transitions, PR synchronization, Jira status mirroring, or `/aw-ship` behavior here; those belong to the lifecycle story.
+Do not mirror fetched Jira status into local integration records or infer it from checkboxes. Pipeline commands own lifecycle requests; `/aw-ship` requires verified merge proof before Done.

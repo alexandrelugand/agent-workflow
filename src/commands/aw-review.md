@@ -26,8 +26,21 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 Resolve $ARGUMENTS to the story id (`s<number>-<slug>`) against docs/stories.md.
 Locate `.worktrees/<id>`, verify its branch is exactly `feature/<id>`, and use
 that absolute worktree as the reviewer working directory and report location.
-Missing worktree, wrong branch, detached HEAD or repository base → STOP; never
-switch branches. Then invoke the Agent tool:
+Missing worktree, wrong branch, detached HEAD or repository base → STOP; never switch branches.
+
+Before invoking the reviewer, best-effort set Jira to `in_review` from the verified worktree:
+
+```sh
+worktree="<repository-base>/.worktrees/<id>"
+git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" in_review); fi
+```
+
+An absent runtime, disabled/incomplete Jira, or unlinked story is a normal skip. Surface any warnings or command error, then continue the review.
+
+Then invoke the Agent tool:
 - subagent_type: reviewer
 - description: Anti-hallucination review of story <id>
 - working directory: the absolute dedicated worktree path verified above.
@@ -39,5 +52,6 @@ Wait for the verdict.
 Write the full report to docs/reviews/<id>.md. It MUST end with the exact lines `Max severity: ...` and `Ship allowed: yes` or `Ship allowed: no` — /aw-ship greps that line, and without it the ship stays blocked. A single critical = no.
 
 ### Step 3 — Gate (fail-closed)
+- Any verdict with `Ship allowed: no` → from the verified worktree, repeat Step 1's runtime resolution and best-effort run `node "$runtime" lifecycle "<id>" blocked` before stopping or entering fix mode. The runtime skips `blocked` when it is not configured and warns when no applicable transition exists. Surface the result; keep the ship gate closed and never mark Done.
 - Verdict with a CRITICAL → Ship blocked. End with: "Ship blocked (critical). Fix via /aw-execute <id> (fix mode), then rerun /aw-review <id>."
 - Otherwise → End with: "Review passed. Next step: /aw-ship <id>"

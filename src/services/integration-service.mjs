@@ -38,6 +38,19 @@ function requireIssueKey(issueKey) {
   return issueKey;
 }
 
+function normalizePullRequestUrl(value) {
+  if (typeof value !== 'string') throw safeJiraError('A valid HTTPS pull request URL is required');
+  let url;
+  try { url = new URL(value); } catch { throw safeJiraError('A valid HTTPS pull request URL is required'); }
+  const segments = url.pathname.split('/').filter(Boolean);
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash ||
+      segments.length < 4 || segments.at(-2) !== 'pull' || !/^\d+$/.test(segments.at(-1))) {
+    throw safeJiraError('A valid HTTPS pull request URL is required');
+  }
+  url.pathname = `/${segments.join('/')}`;
+  return url.toString();
+}
+
 function escapeJql(value) {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }
@@ -84,6 +97,10 @@ class JIRAService {
       issueType: config.issue_type,
       browseBaseUrl: config.browse_base_url,
       epicKey: config.epic_key
+    };
+    this.statusNames = {
+      todo: 'To Do', in_progress: 'In Progress', in_review: 'In Review', done: 'Done',
+      ...(config.status_names || {})
     };
     this.retryAttempts = Number.isInteger(config.retry_attempts) && config.retry_attempts > 0 ? config.retry_attempts : 3;
     this.retryDelay = Number.isFinite(config.retry_delay) && config.retry_delay >= 0 ? config.retry_delay : 1000;
@@ -263,6 +280,68 @@ class JIRAService {
     return data;
   }
 
+  async getIssueStatus(issueKey) {
+    requireIssueKey(issueKey);
+    const { data } = await this.request(`/issue/${encodeURIComponent(issueKey)}?fields=key,status,project`);
+    if (data?.key !== issueKey || data.fields?.project?.key !== this.apiConfig.projectKey || typeof data.fields?.status?.name !== 'string' || !data.fields.status.name.trim()) {
+      throw safeJiraError('Jira issue status is unavailable');
+    }
+    return { key: data.key, status: data.fields.status.name };
+  }
+
+  async transitionIssue(issueKey, semanticStatus) {
+    requireIssueKey(issueKey);
+    if (!['in_progress', 'in_review', 'blocked', 'done'].includes(semanticStatus)) {
+      throw safeJiraError('Invalid Jira lifecycle status');
+    }
+    const destination = this.statusNames[semanticStatus];
+    if (typeof destination !== 'string' || !destination.trim()) {
+      return semanticStatus === 'blocked'
+        ? { transitioned: false, skipped: true, reason: 'blocked status is not configured' }
+        : { transitioned: false, warning: `Jira status mapping '${semanticStatus}' is not configured` };
+    }
+    const current = await this.getIssueStatus(issueKey);
+    if (current.status === destination) return { transitioned: false, alreadyAtTarget: true, status: destination };
+    const { data } = await this.request(`/issue/${encodeURIComponent(issueKey)}/transitions`);
+    if (!Array.isArray(data?.transitions)) throw safeJiraError('Jira transition response was invalid');
+    const matches = data.transitions.filter(transition => transition?.to?.name === destination);
+    if (matches.length !== 1) {
+      const reason = matches.length === 0 ? 'no available transition' : 'multiple available transitions';
+      return { transitioned: false, warning: `Jira ${reason} to configured status '${destination}'` };
+    }
+    if (typeof matches[0].id !== 'string' || !matches[0].id.length) {
+      return { transitioned: false, warning: `Jira transition to configured status '${destination}' has no usable ID` };
+    }
+    await this.request(`/issue/${encodeURIComponent(issueKey)}/transitions`, {
+      method: 'POST', expectJson: false, body: { transition: { id: matches[0].id } }
+    });
+    return { transitioned: true, from: current.status, status: destination };
+  }
+
+  async linkPullRequest(issueKey, { url, merged = false } = {}) {
+    requireIssueKey(issueKey);
+    if (typeof merged !== 'boolean') throw safeJiraError('Invalid pull request merge outcome');
+    const pullRequestUrl = normalizePullRequestUrl(url);
+    await this.getIssue(issueKey);
+    const number = new URL(pullRequestUrl).pathname.split('/').at(-1);
+    const globalId = `system=agent-workflow&pullRequest=${encodeURIComponent(pullRequestUrl)}`;
+    await this.request(`/issue/${encodeURIComponent(issueKey)}/remotelink`, {
+      method: 'POST', expectJson: false, body: {
+        application: { name: 'agent-workflow', type: 'agent-workflow' },
+        globalId,
+        object: {
+          url: pullRequestUrl,
+          title: `Pull request #${number}`,
+          summary: merged ? 'Merged pull request' : 'Open pull request',
+          status: { title: merged ? 'Merged' : 'Open', resolved: merged }
+        },
+        relationship: 'pull request'
+      }
+    });
+    return { linked: true, merged };
+  }
+
+
   async linkStories(blockedKey, dependencyKey) {
     requireIssueKey(blockedKey);
     requireIssueKey(dependencyKey);
@@ -297,10 +376,6 @@ class JIRAService {
     if (existsSync(path)) unlinkSync(path);
   }
 
-  async syncStory(storyId) {
-    this.log('info', `Syncing story ${storyId} with JIRA`, { storyId });
-    return { storyId, synced: true };
-  }
 
   log(level, message, meta = {}) {
     console.log(`[JIRAService ${level.toUpperCase()}] ${message}`, meta ? JSON.stringify(meta) : '');
@@ -357,18 +432,34 @@ class IntegrationService {
     const globalEnabled = content.match(/^  enabled:[ \t]*(true|false)(?:[ \t]*#.*)?[ \t]*$/m);
     if (globalEnabled) config.integrations.enabled = globalEnabled[1] === 'true';
     let section = null;
-    for (const line of content.split(/\r?\n/)) {
-      const top = line.match(/^  (jira|github|telegram|logging):\s*$/);
-      if (top) { section = top[1]; config.integrations[section] = {}; continue; }
-      const field = line.match(/^    ([\w-]+):\s*(.*?)\s*(?:#.*)?$/);
-      if (!field || !section) continue;
-      if (section === 'jira' && ['api_url', 'api_token', 'email'].includes(field[1])) continue;
-      let value = field[2].replace(/^['"]|['"]$/g, '');
+    let subsection = null;
+    const parseValue = raw => {
+      let value = raw.replace(/^['"]|['"]$/g, '');
       value = value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (placeholder, name) => this.environment[name] ?? placeholder);
       if (value === 'true') value = true;
       else if (value === 'false') value = false;
       else if (/^-?\d+(?:\.\d+)?$/.test(value)) value = Number(value);
-      config.integrations[section][field[1]] = value;
+      return value;
+    };
+    for (const line of content.split(/\r?\n/)) {
+      const top = line.match(/^  (jira|github|telegram|logging):\s*$/);
+      if (top) { section = top[1]; subsection = null; config.integrations[section] = {}; continue; }
+      if (!section) continue;
+      const nested = line.match(/^      ([\w-]+):\s*(.*?)\s*(?:#.*)?$/);
+      if (section === 'jira' && subsection === 'status_names' && nested) {
+        config.integrations.jira.status_names[nested[1]] = parseValue(nested[2]);
+        continue;
+      }
+      const field = line.match(/^    ([\w-]+):\s*(.*?)\s*(?:#.*)?$/);
+      if (!field) continue;
+      if (section === 'jira' && ['api_url', 'api_token', 'email'].includes(field[1])) continue;
+      if (section === 'jira' && field[1] === 'status_names') {
+        config.integrations.jira.status_names = {};
+        subsection = 'status_names';
+        continue;
+      }
+      subsection = null;
+      config.integrations[section][field[1]] = parseValue(field[2]);
     }
     return config;
   }
@@ -499,6 +590,22 @@ class IntegrationService {
     return this.requireJiraService().getIssue(issueKey);
   }
 
+  async getJiraIssueStatus(issueKey) {
+    return this.requireJiraService().getIssueStatus(issueKey);
+  }
+
+  validateJiraPullRequestUrl(url) {
+    return normalizePullRequestUrl(url);
+  }
+
+  async transitionJiraIssue(issueKey, semanticStatus) {
+    return this.requireJiraService().transitionIssue(issueKey, semanticStatus);
+  }
+
+  async linkJiraPullRequest(issueKey, options) {
+    return this.requireJiraService().linkPullRequest(issueKey, options);
+  }
+
   getJiraBrowseUrl(issueKey) {
     return this.requireJiraService().browseUrl(issueKey);
   }
@@ -557,22 +664,6 @@ class IntegrationService {
     }
   }
 
-  /**
-   * Sync story with JIRA
-   */
-  async syncStoryWithJira(storyId) {
-    if (!this.jiraService) {
-      throw new Error('JIRA integration is not enabled');
-    }
-
-    try {
-      return await this.jiraService.syncStory(storyId);
-    } catch (error) {
-      const safe = safeProviderError('Jira', error);
-      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
-      throw safe;
-    }
-  }
 
   /**
    * Sync story with GitHub

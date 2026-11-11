@@ -30,6 +30,19 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 4. Check the plan's frontmatter: it must contain `validated: yes`. Otherwise STOP: "Plan not validated. Review it, then rerun /aw-plan <id> to validate."
 5. Read docs/reviews/<id>.md from the worktree if it exists. If it contains `Ship allowed: no`, this is a FIX run: the review findings come first.
 
+Before handing off, attempt the best-effort Jira execution transition from the verified story worktree:
+
+```sh
+worktree="<repository-base>/.worktrees/<id>"
+git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" in_progress); fi
+```
+
+An absent runtime, disabled/incomplete Jira, or unlinked story is a normal skip. Surface any `warnings`, `synced: false`, or CLI error as a Jira sync warning, then continue local implementation. Never infer remote status from local files or stop implementation because of Jira failure.
+
+
 ### Step 2 — Delegate
 Invoke the Agent tool:
 - subagent_type: implementer
