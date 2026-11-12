@@ -11,12 +11,12 @@ const response = body => ({ ok: true, json: async () => body });
 
 const activeConfig = 'integrations:\n  enabled: true\n  jira:\n    enabled: true\n    issue_type: "Story"\n    browse_base_url: ""\n    retry_attempts: 1\n    retry_delay: 0\n';
 const storyMarkdown = `# Stories\n\n## Story s01-jira-setup — Jira setup\n\n**As a** maintainer **I want** a Jira setup story **so that** imports can refer to it.\n\n### Acceptance criteria\n- [x] Setup is verified.\n\n### Dependencies\nNone.\n\n## Story s02-jira-import — Import selected stories\n\n**As a** product owner **I want** to select a story **so that** only that story is imported.\n\n### Acceptance criteria\n- [x] Completed criterion text.\n- [ ] Pending criterion text.\n\n### Dependencies\n\`s01-jira-setup\`.\n\n## Story s03-jira-lifecycle — Jira lifecycle\n\n**As a** maintainer **I want** a later story **so that** it stays unrequested.\n`;
-function importerFixture({ stories = storyMarkdown, record = null, dependencyRecord = null } = {}) {
+function importerFixture({ stories = storyMarkdown, record = null, dependencyRecord = null, config = activeConfig } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'aw-jira-import-cli-'));
   const worktree = join(root, '.worktrees', 's02-jira-import');
   mkdirSync(join(root, '.agent-workflow'), { recursive: true });
   mkdirSync(join(worktree, 'docs'), { recursive: true });
-  writeFileSync(join(root, '.agent-workflow/integrations.yaml'), activeConfig);
+  writeFileSync(join(root, '.agent-workflow/integrations.yaml'), config);
   writeFileSync(join(worktree, 'docs/stories.md'), stories);
   if (record !== null || dependencyRecord !== null) mkdirSync(join(worktree, 'docs/integrations'), { recursive: true });
   if (record !== null) writeFileSync(join(worktree, 'docs/integrations/s02-jira-import.md'), record);
@@ -45,8 +45,11 @@ test('Jira preview rejects fuzzy or absent IDs before making requests', async ()
   } finally { fixture.clean(); }
 });
 
-test('confirmed Jira import sends criterion text without transferring checkbox state', async () => {
-  const fixture = importerFixture();
+test('confirmed Jira import converts Markdown to ADF without transferring checkbox state', async () => {
+  const stories = storyMarkdown
+    .replace('Completed criterion text', '**Completed** criterion *text* with `inline code` and ~~old wording~~')
+    .replace('Pending criterion text', 'Pending [criterion link](https://example.test)');
+  const fixture = importerFixture({ stories });
   let createBody;
   try {
     const fetchImpl = async (url, options = {}) => {
@@ -56,10 +59,22 @@ test('confirmed Jira import sends criterion text without transferring checkbox s
       throw new Error('unexpected synthetic request');
     };
     const result = await importJiraStories({ storyIds: ['s02-jira-import'], confirm: true, ...fixture.options, fetchImpl });
-    const adf = JSON.stringify(createBody.fields.description);
-    assert.match(adf, /Completed criterion text/);
-    assert.match(adf, /Pending criterion text/);
-    assert.doesNotMatch(adf, /\[[x ]\]/);
+    const textNodes = [];
+    const collectTextNodes = node => {
+      if (node.type === 'text') textNodes.push(node);
+      else for (const child of node.content || []) collectTextNodes(child);
+    };
+    collectTextNodes(createBody.fields.description);
+    const visibleText = textNodes.map(node => node.text).join('');
+    assert.match(visibleText, /Completed criterion text with inline code and old wording/);
+    assert.match(visibleText, /Pending criterion link/);
+    assert.doesNotMatch(visibleText, /\*\*|__|~~|`|\[[xX ]\]|\]\(/);
+    assert.ok(textNodes.some(node => node.text === 'As a' && node.marks?.some(mark => mark.type === 'strong')));
+    assert.ok(textNodes.some(node => node.text === 'Completed' && node.marks?.some(mark => mark.type === 'strong')));
+    assert.ok(textNodes.some(node => node.text === 'inline code' && node.marks?.some(mark => mark.type === 'code')));
+    assert.ok(textNodes.some(node => node.text === 'text' && node.marks?.some(mark => mark.type === 'em')));
+    assert.ok(textNodes.some(node => node.text === 'old wording' && node.marks?.some(mark => mark.type === 'strike')));
+    assert.ok(textNodes.some(node => node.text === 'criterion link' && node.marks?.some(mark => mark.type === 'link' && mark.attrs.href === 'https://example.test')));
     assert.deepEqual(result.failures, []);
   } finally { fixture.clean(); }
 });
@@ -213,6 +228,104 @@ test('dependency link failures are reported without losing the imported Jira rec
   } finally { fixture.clean(); }
 });
 
+test('per-story Epic overrides the global parent and reopens a completed Epic', async () => {
+  const stories = storyMarkdown.replace(
+    '### Dependencies\n`s01-jira-setup`.',
+    '### Epic\nDEMO-42\n\n### Dependencies\n`s01-jira-setup`.'
+  );
+  const fixture = importerFixture({
+    stories,
+    config: activeConfig.replace('    issue_type: "Story"\n', '    issue_type: "Story"\n    epic_key: "DEMO-99"\n')
+  });
+  const requests = [];
+  try {
+    const preview = await previewJiraImport({ storyIds: ['s02-jira-import'], ...fixture.options, fetchImpl: async url => {
+      if (url.endsWith('/search/jql')) return jiraResponse({ issues: [], isLast: true });
+      throw new Error('unexpected synthetic request');
+    } });
+    assert.equal(preview.stories[0].epicKey, 'DEMO-42');
+
+    const fetchImpl = async (url, options = {}) => {
+      requests.push({ url, options });
+      if (url.endsWith('/search/jql')) return jiraResponse({ issues: [], isLast: true });
+      if (url.endsWith('/issue/DEMO-42?fields=key,issuetype,project,status')) return jiraResponse({
+        key: 'DEMO-42', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Epic' }, status: { name: 'Done', statusCategory: { key: 'done' } } }
+      });
+      if (url.endsWith('/issue') && options.method === 'POST') return jiraResponse({ key: 'DEMO-17' });
+      if (url.endsWith('/issue/DEMO-17?fields=key,issuetype,project,issuelinks,parent')) {
+        const issue = jiraIssue('DEMO-17');
+        issue.fields.parent = { key: 'DEMO-42' };
+        return jiraResponse(issue);
+      }
+      if (url.endsWith('/issue/DEMO-42/transitions') && options.method === 'POST') return jiraResponse({}, 204);
+      if (url.endsWith('/issue/DEMO-42/transitions')) return jiraResponse({ transitions: [{ id: '42', to: { name: 'To Do' } }] });
+      throw new Error('unexpected synthetic request');
+    };
+    const result = await importJiraStories({ storyIds: ['s02-jira-import'], confirm: true, ...fixture.options, fetchImpl });
+    const create = requests.find(request => request.url.endsWith('/issue') && request.options.method === 'POST');
+    assert.deepEqual(JSON.parse(create.options.body).fields.parent, { key: 'DEMO-42' });
+    assert.equal(requests.some(request => request.url.includes('DEMO-99')), false);
+    assert.deepEqual(result.imported, [{ storyId: 's02-jira-import', key: 'DEMO-17', url: 'https://example.atlassian.net/browse/DEMO-17', epicKey: 'DEMO-42' }]);
+    assert.deepEqual(result.epicReopened, [{ storyId: 's02-jira-import', epicKey: 'DEMO-42', status: 'To Do' }]);
+    assert.deepEqual(result.failures, []);
+    assert.equal(result.epicWarnings, undefined);
+  } finally { fixture.clean(); }
+});
+
+test('existing Jira stories are not moved to a different selected Epic', async () => {
+  const stories = storyMarkdown.replace(
+    '### Dependencies\n`s01-jira-setup`.',
+    '### Epic\nDEMO-42\n\n### Dependencies\n`s01-jira-setup`.'
+  );
+  const fixture = importerFixture({
+    stories,
+    record: '# Story Integration: s02-jira-import\n\n## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n'
+  });
+  const requests = [];
+  try {
+    const result = await importJiraStories({ storyIds: ['s02-jira-import'], confirm: true, ...fixture.options, fetchImpl: async (url, options = {}) => {
+      requests.push({ url, options });
+      if (url.endsWith('/issue/DEMO-17?fields=key,issuetype,project,issuelinks,parent')) {
+        const issue = jiraIssue('DEMO-17');
+        issue.fields.parent = { key: 'DEMO-99' };
+        return jiraResponse(issue);
+      }
+      throw new Error('unexpected synthetic request');
+    } });
+    assert.equal(result.imported[0].key, 'DEMO-17');
+    assert.deepEqual(result.epicWarnings, [{ storyId: 's02-jira-import', epicKey: 'DEMO-42', reason: 'Existing Jira story was not moved to the selected Epic' }]);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].options.method, 'GET');
+  } finally { fixture.clean(); }
+});
+
+test('Epic reopen failures warn without undoing the Jira story import', async () => {
+  const stories = storyMarkdown.replace(
+    '### Dependencies\n`s01-jira-setup`.',
+    '### Epic\nDEMO-42\n\n### Dependencies\n`s01-jira-setup`.'
+  );
+  const fixture = importerFixture({ stories });
+  try {
+    const result = await importJiraStories({ storyIds: ['s02-jira-import'], confirm: true, ...fixture.options, fetchImpl: async (url, options = {}) => {
+      if (url.endsWith('/search/jql')) return jiraResponse({ issues: [], isLast: true });
+      if (url.endsWith('/issue/DEMO-42?fields=key,issuetype,project,status')) return jiraResponse({
+        key: 'DEMO-42', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Epic' }, status: { name: 'Done', statusCategory: { key: 'done' } } }
+      });
+      if (url.endsWith('/issue') && options.method === 'POST') return jiraResponse({ key: 'DEMO-17' });
+      if (url.endsWith('/issue/DEMO-17?fields=key,issuetype,project,issuelinks,parent')) {
+        const issue = jiraIssue('DEMO-17');
+        issue.fields.parent = { key: 'DEMO-42' };
+        return jiraResponse(issue);
+      }
+      if (url.endsWith('/issue/DEMO-42/transitions')) return jiraResponse({}, 403);
+      throw new Error('unexpected synthetic request');
+    } });
+    assert.equal(result.imported[0].key, 'DEMO-17');
+    assert.deepEqual(result.failures, []);
+    assert.deepEqual(result.epicWarnings, [{ storyId: 's02-jira-import', epicKey: 'DEMO-42', reason: 'Epic reopen failed (HTTP 403)' }]);
+    assert.match(readFileSync(join(fixture.worktree, 'docs/integrations/s02-jira-import.md'), 'utf8'), /Key: DEMO-17/);
+  } finally { fixture.clean(); }
+});
 test('validates identity and exact project issue type', async () => {
   const requests = [];
   const result = await validateJira({ env, config, fetchImpl: async (url, options) => { requests.push([url, options]); return response(url.endsWith('/myself') ? { accountId: 'user' } : { issueTypes: [{ name: 'Story' }] }); } });
@@ -250,6 +363,76 @@ test('loads shared consumer config when called from a story worktree', async () 
     assert.equal(result.valid, true);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('loads Jira credentials from consumer env files with mode and process precedence', async () => {
+  const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
+  const environmentKeys = ['AW_PROJECT_ROOT', 'NODE_ENV', 'JIRA_API_URL', 'JIRA_PROJECT_KEY', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+  const previous = new Map(environmentKeys.map(name => [name, process.env[name]]));
+  try {
+    for (const name of environmentKeys) delete process.env[name];
+    const baseEnvironment = [
+      'JIRA_API_URL=https://example.atlassian.net # shared site',
+      'JIRA_PROJECT_KEY=BASE',
+      'JIRA_EMAIL=base@example.test',
+      'JIRA_API_TOKEN=base-token'
+    ].join('\n');
+    writeFileSync(join(fixture.root, '.env'), baseEnvironment);
+    writeFileSync(join(fixture.root, '.env.development'), [
+      'JIRA_PROJECT_KEY=DEVELOPMENT',
+      'JIRA_EMAIL=development@example.test',
+      'JIRA_API_TOKEN="development-token # quoted"'
+    ].join('\n'));
+    writeFileSync(join(fixture.root, '.env.production'), [
+      'JIRA_PROJECT_KEY=DEMO',
+      'JIRA_EMAIL=production@example.test',
+      'JIRA_API_TOKEN="production-token # quoted"'
+    ].join('\n'));
+    const validate = async () => {
+      const authorization = [];
+      const result = await validateJira({ workingDirectory: fixture.worktree, fetchImpl: async (url, options) => {
+        authorization.push(options.headers.Authorization);
+        return response(url.endsWith('/myself') ? {} : { issueTypes: [{ name: 'Story' }] });
+      } });
+      return { result, authorization: authorization[0] };
+    };
+
+    const development = await validate();
+    assert.equal(development.result.projectKey, 'DEVELOPMENT');
+    assert.equal(development.authorization, `Basic ${Buffer.from('development@example.test:development-token # quoted').toString('base64')}`);
+
+    process.env.NODE_ENV = 'production';
+    const production = await validate();
+    assert.equal(production.result.projectKey, 'DEMO');
+    assert.equal(production.authorization, `Basic ${Buffer.from('production@example.test:production-token # quoted').toString('base64')}`);
+
+    process.env.JIRA_PROJECT_KEY = 'PROCESS_OVERRIDE';
+    const overridden = await validate();
+    assert.equal(overridden.result.projectKey, 'PROCESS_OVERRIDE');
+    assert.equal(overridden.authorization, production.authorization);
+
+    delete process.env.NODE_ENV;
+    delete process.env.JIRA_PROJECT_KEY;
+    writeFileSync(join(fixture.root, '.env'), `NODE_ENV=production\n${baseEnvironment}`);
+    const repositorySelected = await validate();
+    assert.equal(repositorySelected.result.projectKey, 'DEMO');
+    assert.equal(repositorySelected.authorization, production.authorization);
+
+    const statusAuthorization = [];
+    const status = await getStatus({ ...fixture.options, env: undefined, fetchImpl: async (url, options) => {
+      statusAuthorization.push(options.headers.Authorization);
+      return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'In Review' } } });
+    } });
+    assert.deepEqual(status.jira.stories, [{ storyId: 's02-jira-import', issueKey: 'DEMO-17', status: 'In Review' }]);
+    assert.equal(statusAuthorization[0], repositorySelected.authorization);
+  } finally {
+    for (const [name, value] of previous) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    fixture.clean();
+  }
+});
+
 test('status action reports linked Jira issues as unavailable without requests when disabled', async () => {
   const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
   let requests = 0;
@@ -352,7 +535,7 @@ test('lifecycle action keeps open PRs In Review and updates one remote link on v
   let currentStatus = 'In Review';
   try {
     const fetchImpl = async (url, options = {}) => {
-      if (url.endsWith('?fields=key,issuetype,project,issuelinks')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
+      if (url.endsWith('?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
       if (url.endsWith('/remotelink')) { linkBodies.push(JSON.parse(options.body)); return jiraResponse({}, 201); }
       if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: currentStatus } } });
       if (url.endsWith('/transitions') && options.method === 'POST') { currentStatus = 'Done'; return jiraResponse({}, 204); }
@@ -380,7 +563,7 @@ test('lifecycle action warns on PR-link failure but still attempts its status tr
   const requests = [];
   try {
     const result = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'in_review', pullRequestUrl: 'https://github.com/acme/repo/pull/42', ...fixture.options, fetchImpl: async (url, options = {}) => {
-      if (url.endsWith('?fields=key,issuetype,project,issuelinks')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
+      if (url.endsWith('?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
       requests.push({ url, options });
       if (url.endsWith('/remotelink')) return jiraResponse({}, 403);
       if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'To Do' } } });
@@ -398,7 +581,7 @@ test('lifecycle action records a PR link and continues when the Jira transition 
   const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
   try {
     const result = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'in_review', pullRequestUrl: 'https://github.com/acme/repo/pull/42', ...fixture.options, fetchImpl: async (url, options = {}) => {
-      if (url.endsWith('?fields=key,issuetype,project,issuelinks')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
+      if (url.endsWith('?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
       if (url.endsWith('/remotelink')) return jiraResponse({}, 201);
       return jiraResponse({}, 403);
     } });

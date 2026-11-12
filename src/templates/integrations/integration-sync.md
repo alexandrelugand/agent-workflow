@@ -6,7 +6,7 @@ This guide documents Jira lifecycle synchronization in agent-workflow. It does n
 
 The repository owns story content and local pipeline progress. Jira owns the remote issue status; the runtime never infers it from Markdown checkboxes. Jira remains optional: disabled or incomplete configuration, an absent runtime, or an unlinked story means no lifecycle request.
 
-The consumer config is `.agent-workflow/integrations.yaml` and the installed runtime is `.agent-workflow/runtime/integration-cli.mjs`. The config is user-owned and contains no credentials. Keep `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in the process environment or a user-managed secret store.
+The consumer config is `.agent-workflow/integrations.yaml` and the installed runtime is `.agent-workflow/runtime/integration-cli.mjs`. The config is user-owned and contains no credentials. Keep Jira variables in the process environment, a user-managed secret store, or Git-ignored consumer-root `.env` / `.env.<NODE_ENV>` files. `.env.development` is the default; put `NODE_ENV=production` in `.env` to select `.env.production`. Process values override files.
 
 ## Pipeline events
 
@@ -37,7 +37,7 @@ The runtime upserts one Jira remote link using a stable global ID. It updates th
 
 ## Import boundary
 
-Import is a separate, explicit write path. `/aw-integrate-jira` accepts only full story IDs selected by the user, shows a read-only preview, and requests confirmation before the separate import action. One selected story creates or reuses one issue. No Epic, Requirement, placeholder, acceptance-criterion issue, or historical backlog import is automatic. Do not use lifecycle commands to create issues or dependency links.
+Import is a separate, explicit write path. `/aw-integrate-jira` accepts only full story IDs selected by the user, shows a read-only preview, and requests confirmation before the separate import action. One selected story creates or reuses one issue. A configured `jira.epic_key` or story-level `### Epic` selects an existing parent for new issues; a verified new/recovered child can reopen a parent in Jira's `done` category to `status_names.todo`. No Epic, Requirement, placeholder, acceptance-criterion issue, or historical backlog import is automatic. Do not use lifecycle commands to create issues or dependency links.
 
 ## Safe operation
 

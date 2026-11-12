@@ -6,6 +6,43 @@ import { resolveConsumerRoot } from './project-root.mjs';
 import { requireApprovedJiraBaseUrl } from './jira-url.mjs';
 
 const requiredVariables = ['JIRA_API_URL', 'JIRA_PROJECT_KEY', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+function readJiraEnvironmentFile(path) {
+  let content;
+  try { content = readFileSync(path, 'utf8'); }
+  catch (error) {
+    if (error.code === 'ENOENT') return {};
+    throw new Error('Unable to read local Jira environment file');
+  }
+  const values = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    const [, name, rawValue] = match;
+    if (name !== 'NODE_ENV' && !requiredVariables.includes(name)) continue;
+    const quoted = rawValue.trim().match(/^("(?:\\.|[^"\\])*"|'[^']*')/);
+    if (quoted) {
+      let value = quoted[0].slice(1, -1);
+      if (quoted[0][0] === '"') {
+        value = value.replace(/\\([nr\\"])/g, (_, escape) => escape === 'n' ? '\n' : escape === 'r' ? '\r' : escape);
+      }
+      values[name] = value;
+      continue;
+    }
+    if (/^["']/.test(rawValue.trim())) continue;
+    values[name] = rawValue.split('#', 1)[0].trim();
+  }
+  return values;
+}
+
+function loadJiraEnvironment(consumerRoot, environment = process.env) {
+  const base = readJiraEnvironmentFile(join(consumerRoot, '.env'));
+  const mode = environment.NODE_ENV || base.NODE_ENV || 'development';
+  const specific = /^[A-Za-z0-9_-]+$/.test(mode)
+    ? readJiraEnvironmentFile(join(consumerRoot, `.env.${mode}`))
+    : {};
+  return { ...base, ...specific, ...environment };
+}
+
 const storyIdPattern = /^s\d+-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const issueKeyPattern = /^[A-Z][A-Z0-9_]*-\d+$/;
 
@@ -27,9 +64,10 @@ function configuredIssueType(config) {
   return '';
 }
 
-export async function validateJira({ fetchImpl = globalThis.fetch, env = process.env, config = null, workingDirectory = process.cwd() } = {}) {
+export async function validateJira({ fetchImpl = globalThis.fetch, env, config = null, workingDirectory = process.cwd() } = {}) {
   const root = resolveConsumerRoot(import.meta.url, workingDirectory);
   config ??= readFileSync(join(root, '.agent-workflow/integrations.yaml'), 'utf8');
+  env ??= loadJiraEnvironment(root);
   const missing = requiredVariables.filter(name => !env[name]);
   if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   const base = requireApprovedJiraBaseUrl(env.JIRA_API_URL);
@@ -37,6 +75,7 @@ export async function validateJira({ fetchImpl = globalThis.fetch, env = process
   const issueType = configuredIssueType(config);
   if (!issueType) throw new Error('Configure jira.issue_type before validation');
   const auth = `Basic ${Buffer.from(`${env.JIRA_EMAIL}:${env.JIRA_API_TOKEN}`).toString('base64')}`;
+
   const request = async path => {
     let response;
     try { response = await fetchImpl(`${base}${path}`, { redirect: 'error', headers: { Authorization: auth, Accept: 'application/json' } }); }
@@ -85,7 +124,7 @@ function listLocalJiraLinks(worktreeRoot) {
   return { links, warning: null };
 }
 
-export async function getStatus({ workingDirectory = process.cwd(), fetchImpl = globalThis.fetch, env = process.env } = {}) {
+export async function getStatus({ workingDirectory = process.cwd(), fetchImpl = globalThis.fetch, env } = {}) {
   const { worktreeRoot, service } = await createContext({ workingDirectory, fetchImpl, env }, { requireJira: false });
   const integrationStatus = service.getIntegrationStatus();
   const local = listLocalJiraLinks(worktreeRoot);
@@ -156,7 +195,13 @@ function parseStorySections(markdown, ids) {
       .filter(Boolean);
     const dependencyText = sectionLines('Dependencies').join('\n');
     const dependencies = [...new Set(dependencyText.match(/s\d+-[a-z0-9]+(?:-[a-z0-9]+)*/g) || [])];
-    stories.set(id, { storyId: id, summary: section.title, userStory, acceptanceCriteria, dependencies });
+    const epicEntries = sectionLines('Epic')
+      .map(line => line.replace(/<!--.*?-->/g, '').match(/^\s*(?:[-*]\s*)?(.+?)\s*$/)?.[1]?.trim())
+      .filter(Boolean);
+    if (epicEntries.length > 1) throw new Error(`Requested story ${id} must have one Jira Epic key`);
+    const epicKey = epicEntries[0] || null;
+    if (epicKey && !issueKeyPattern.test(epicKey)) throw new Error(`Requested story ${id} has an invalid Jira Epic key`);
+    stories.set(id, { storyId: id, summary: section.title, userStory, acceptanceCriteria, dependencies, epicKey });
   }
   return stories;
 }
@@ -248,7 +293,7 @@ async function createContext(options = {}, { requireJira = true } = {}) {
   const service = new IntegrationService(options.configPath || join(consumerRoot, '.agent-workflow/integrations.yaml'), {
     projectRoot: consumerRoot,
     fetch: options.fetchImpl || globalThis.fetch,
-    environment: options.env || process.env,
+    environment: options.env ?? loadJiraEnvironment(consumerRoot),
     sleep: options.sleep
   });
   const writeLog = console.log;
@@ -322,6 +367,14 @@ function dependencyPreview(story, inspected, worktreeRoot) {
       : { storyId: dependencyId, action: 'skip', reason: 'dependency has no local Jira link' };
   });
 }
+function configuredEpicKey(story, service) {
+  return story.epicKey || service.config.integrations?.jira?.epic_key || null;
+}
+
+function assertJiraEpicParent(issue, epicKey) {
+  return issue.fields?.parent?.key === epicKey;
+}
+
 
 export async function previewJiraImport({ storyIds, ...options } = {}) {
   const ids = requestedIds(storyIds);
@@ -330,15 +383,18 @@ export async function previewJiraImport({ storyIds, ...options } = {}) {
     preview: true,
     stories: [...context.stories].map(([storyId, story]) => {
       const item = context.inspected.get(storyId);
+      const epicKey = ['create', 'recover-pending'].includes(item.action) ? configuredEpicKey(story, context.service) : null;
       return {
         storyId, summary: story.summary, action: item.action,
         ...(item.key ? { key: item.key, url: item.url } : {}),
         ...(item.matches ? { matches: item.matches } : {}),
+        ...(epicKey ? { epicKey } : {}),
         dependencyLinks: dependencyPreview(story, context.inspected, context.worktreeRoot)
       };
     })
   };
 }
+
 
 export async function importJiraStories({ storyIds, confirm = false, ...options } = {}) {
   const ids = requestedIds(storyIds);
@@ -348,25 +404,50 @@ export async function importJiraStories({ storyIds, confirm = false, ...options 
   const { service } = await createContext({ ...options, workingDirectory: worktreeRoot });
   const imported = new Map();
   const failures = [];
+  const epicReopened = [];
+  const epicWarnings = [];
   for (const [storyId, story] of stories) {
     try {
       const record = readIntegrationRecord(worktreeRoot, storyId);
       let issue;
       let url;
+      let creation = null;
       if (record.jira) {
         if (service.hasPendingJiraImport(storyId)) await requirePendingMarkerMatch(service, storyId, record.jira.key);
         issue = await service.getJiraIssue(record.jira.key);
         assertConfiguredIssueType(service, issue);
         url = service.getJiraBrowseUrl(record.jira.key);
       } else {
-        const result = await service.createJiraStory(story);
-        issue = await service.getJiraIssue(result.key);
+        creation = await service.createJiraStory(story);
+        issue = await service.getJiraIssue(creation.key);
         assertConfiguredIssueType(service, issue);
-        url = result.url;
+        url = creation.url;
+      }
+      const epicKey = configuredEpicKey(story, service);
+      const assignedEpicKey = epicKey && assertJiraEpicParent(issue, epicKey) ? epicKey : null;
+      if (epicKey && !assignedEpicKey) {
+        epicWarnings.push({
+          storyId, epicKey,
+          reason: creation?.created || creation?.recovered
+            ? 'Jira story was not assigned to the selected Epic'
+            : 'Existing Jira story was not moved to the selected Epic'
+        });
       }
       saveJiraLink(worktreeRoot, storyId, record, issue.key, url);
       service.clearPendingJiraImport(storyId);
-      imported.set(storyId, { story, key: issue.key, url });
+      imported.set(storyId, { story, key: issue.key, url, ...(assignedEpicKey ? { epicKey: assignedEpicKey } : {}) });
+      if (creation && (creation.created || creation.recovered) && assignedEpicKey) {
+        try {
+          const reopen = await service.reopenJiraEpicIfDone(assignedEpicKey);
+          if (reopen.reopened) epicReopened.push({ storyId, epicKey: assignedEpicKey, status: reopen.status });
+          if (reopen.warning) epicWarnings.push({ storyId, epicKey: assignedEpicKey, reason: reopen.warning });
+        } catch (error) {
+          epicWarnings.push({
+            storyId, epicKey: assignedEpicKey,
+            reason: Number.isInteger(error?.status) ? `Epic reopen failed (HTTP ${error.status})` : 'Epic reopen failed'
+          });
+        }
+      }
     } catch (error) {
       failures.push({ storyId, message: error.message });
     }
@@ -390,8 +471,14 @@ export async function importJiraStories({ storyIds, confirm = false, ...options 
       }
     }
   }
-  return { imported: [...imported].map(([storyId, value]) => ({ storyId, key: value.key, url: value.url })), failures, linked, dependencyFailures };
+  return {
+    imported: [...imported].map(([storyId, value]) => ({ storyId, key: value.key, url: value.url, ...(value.epicKey ? { epicKey: value.epicKey } : {}) })),
+    failures, linked, dependencyFailures,
+    ...(epicReopened.length ? { epicReopened } : {}),
+    ...(epicWarnings.length ? { epicWarnings } : {})
+  };
 }
+
 
 export async function linkJiraStory({ storyId, issueKey, ...options } = {}) {
   requestedIds([storyId]);
@@ -518,6 +605,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   run().then(result => {
     if (action === 'validate') console.log(`Jira validation succeeded for project ${result.projectKey} and issue type ${result.issueType}`);
     else console.log(JSON.stringify(result, null, 2));
-    if (result?.failures?.length || result?.dependencyFailures?.length) process.exitCode = 1;
+    if (result?.failures?.length || result?.dependencyFailures?.length || result?.epicWarnings?.length) process.exitCode = 1;
   }).catch(error => { console.error(error.message); process.exitCode = 1; });
 }

@@ -4,7 +4,7 @@ The installer seeds `.agent-workflow/integrations.yaml` only when absent. This f
 
 ## Jira setup
 
-Set the following in the process environment or a user-managed secret store. Never put their values in YAML, prompts, logs, or command output:
+The Jira CLI reads the following from the process environment or consumer-root `.env` and `.env.<NODE_ENV>` files. `.env.development` is the default when `NODE_ENV` is unset; put `NODE_ENV=production` in `.env` to select `.env.production` without a system setting. Process values override file values. Keep local `.env*` files Git-ignored. Never put credentials in YAML, prompts, tracked files, logs, or command output:
 
 - `JIRA_API_URL` — HTTPS Jira Cloud site or scoped-token base URL
 - `JIRA_PROJECT_KEY` — project key
@@ -20,8 +20,9 @@ integrations:
     enabled: false
     issue_type: "Story"
     browse_base_url: "" # Required for issue links when JIRA_API_URL is a scoped API base
-    epic_key: "" # Optional existing Epic parent; never created automatically
+    epic_key: "" # Optional existing default Epic; overridden by a story's ### Epic key
     status_names:
+      # Reopen a completed parent Epic to this destination after story creation.
       todo: "To Do"
       in_progress: "In Progress"
       in_review: "In Review"

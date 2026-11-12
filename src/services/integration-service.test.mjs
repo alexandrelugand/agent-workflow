@@ -251,19 +251,24 @@ test('Jira marker search follows every enhanced JQL page', async () => {
   } finally { file.clean(); }
 });
 
-test('story creation sends configured issue type, ADF, stable label, and optional parent after persisting intent', async () => {
+test('story creation validates the configured Epic before setting it as parent', async () => {
   const file = fixture(jiraConfig(true, '    epic_key: "DEMO-99"\n'));
   const requests = [];
   try {
     const service = await activeService(file, async (url, options) => {
       requests.push({ url, options });
       if (url.endsWith('/search/jql')) return jiraResponse({ issues: [], isLast: true });
+      if (url.endsWith('/issue/DEMO-99?fields=key,issuetype,project,status')) {
+        assert.equal(existsSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json')), false);
+        return jiraResponse({ key: 'DEMO-99', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Epic' } } });
+      }
       assert.equal(existsSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json')), true);
       return jiraResponse({ key: 'DEMO-17' });
     });
     assert.deepEqual(await service.createJiraStory(storyData), { key: 'DEMO-17', url: 'https://example.atlassian.net/browse/DEMO-17', created: true });
-    const payload = JSON.parse(requests[1].options.body);
-    assert.equal(requests[1].options.method, 'POST');
+    assert.equal(requests[1].options.method, 'GET');
+    assert.equal(requests[2].options.method, 'POST');
+    const payload = JSON.parse(requests[2].options.body);
     assert.equal(payload.fields.project.key, 'DEMO');
     assert.deepEqual(payload.fields.issuetype, { name: 'Story' });
     assert.equal(payload.fields.summary, storyData.summary);
@@ -277,6 +282,29 @@ test('story creation sends configured issue type, ADF, stable label, and optiona
     assert.doesNotMatch(adf, /\[[x ]\]/);
     assert.match(adf, /s01-jira-setup/);
   } finally { file.clean(); }
+});
+
+test('story creation rejects parents that are not Epics in the configured project', async t => {
+  for (const [name, projectKey, issueType, error] of [
+    ['non-Epic issue', 'DEMO', 'Task', /not an Epic/],
+    ['issue in another project', 'OTHER', 'Epic', /not available in the configured project/]
+  ]) {
+    await t.test(name, async () => {
+      const file = fixture(jiraConfig(true, '    epic_key: "DEMO-99"\n'));
+      const requests = [];
+      try {
+        const service = await activeService(file, async (url, options) => {
+          requests.push({ url, options });
+          if (url.endsWith('/search/jql')) return jiraResponse({ issues: [], isLast: true });
+          return jiraResponse({ key: 'DEMO-99', fields: { project: { key: projectKey }, issuetype: { name: issueType } } });
+        });
+        await assert.rejects(service.createJiraStory(storyData), error);
+        assert.equal(requests.length, 2);
+        assert.equal(requests.some(request => request.url.endsWith('/issue') && request.options.method === 'POST'), false);
+        assert.equal(existsSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json')), false);
+      } finally { file.clean(); }
+    });
+  }
 });
 
 test('permanent Jira create errors are not retried', async () => {
@@ -326,7 +354,7 @@ test('ambiguous create recovers exactly one marker match', async () => {
       if (url.endsWith('/search/jql')) { searches++; return jiraResponse({ issues: searches === 1 ? [] : markerIssues('s02-jira-import'), isLast: true }); }
       throw new Error('connection closed after request');
     });
-    assert.deepEqual(await service.createJiraStory(storyData), { key: 'DEMO-1', url: 'https://example.atlassian.net/browse/DEMO-1', reused: true });
+    assert.deepEqual(await service.createJiraStory(storyData), { key: 'DEMO-1', url: 'https://example.atlassian.net/browse/DEMO-1', reused: true, recovered: true });
     assert.equal(searches, 2);
     assert.equal(existsSync(join(file.dir, '.agent-workflow/jira-import-pending/s02-jira-import.json')), true);
   } finally { file.clean(); }
@@ -430,6 +458,22 @@ test('default Jira status mapping uses the returned transition ID', async () => 
   } finally { file.clean(); }
 });
 
+test('completed Epic reopen helper leaves non-Done Epics unchanged', async () => {
+  const file = fixture(jiraConfig(true));
+  const requests = [];
+  try {
+    const service = await activeService(file, async (url, options) => {
+      requests.push({ url, options });
+      return jiraResponse({ key: 'DEMO-99', fields: {
+        project: { key: 'DEMO' }, issuetype: { name: 'Epic' },
+        status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }
+      } });
+    });
+    assert.deepEqual(await service.reopenJiraEpicIfDone('DEMO-99'), { reopened: false, status: 'In Progress' });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].options.method, 'GET');
+  } finally { file.clean(); }
+});
 test('already-current Jira status does not request or post a transition', async () => {
   const file = fixture(jiraConfig(true));
   let requests = 0;
@@ -518,7 +562,7 @@ test('Jira PR remote links use a stable global ID and record merged state', asyn
   const bodies = [];
   try {
     const service = await activeService(file, async (requestUrl, options = {}) => {
-      if (requestUrl.endsWith('?fields=key,issuetype,project,issuelinks')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
+      if (requestUrl.endsWith('?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
       bodies.push(JSON.parse(options.body));
       return jiraNoBody(201);
     });

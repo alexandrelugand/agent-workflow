@@ -9,4 +9,9 @@ memory/
 /AGENTS.md
 /CLAUDE.md
 
+# Local environment variables and credentials
+/.env
+/.env.*
+!/.env.example
+
 .DS_Store

@@ -4,7 +4,7 @@
 
 Jira runtime configuration is `.agent-workflow/integrations.yaml`, created by the installer only if absent. It is user-owned and never overwritten or removed by update. Jira is disabled by default; local pipeline behavior does not depend on Jira.
 
-Set these variables in the process environment or a user-managed secret store; do not write their values to YAML, logs, command output, or repository files:
+The Jira CLI reads these values from the process environment or consumer-root `.env` and `.env.<NODE_ENV>` files. It defaults to `.env.development`; put `NODE_ENV=production` in `.env` to select `.env.production` without an OS setting. Process values override files. Keep local `.env*` files Git-ignored and credentials out of YAML, tracked files, logs, and command output:
 
 - `JIRA_API_URL`
 - `JIRA_PROJECT_KEY`

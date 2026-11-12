@@ -16,6 +16,9 @@
 ### Dependencies
 <stories or elements required before>
 
+### Epic
+<!-- Optional existing Jira Epic key; overrides jira.epic_key when set. -->
+
 ### Agentic notes
 <technical context useful to the agent: files involved, constraints, traps>
 

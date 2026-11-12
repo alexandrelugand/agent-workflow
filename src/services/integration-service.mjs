@@ -64,8 +64,104 @@ function retryAfterMilliseconds(response, fallback) {
   return Number.isFinite(date) ? Math.max(0, date - Date.now()) : fallback;
 }
 
-function textNode(text) { return { type: 'text', text }; }
-function paragraph(text) { return { type: 'paragraph', content: [textNode(text)] }; }
+function textNode(text, marks = []) {
+  return { type: 'text', text, ...(marks.length ? { marks } : {}) };
+}
+const markdownInlineDelimiters = [
+  { delimiter: '***', marks: ['strong', 'em'] },
+  { delimiter: '___', marks: ['strong', 'em'] },
+  { delimiter: '**', marks: ['strong'] },
+  { delimiter: '__', marks: ['strong'] },
+  { delimiter: '~~', marks: ['strike'] },
+  { delimiter: '*', marks: ['em'] },
+  { delimiter: '_', marks: ['em'] }
+];
+function escapedMarkdownDelimiter(source, index) {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && source[cursor] === '\\'; cursor--) backslashes++;
+  return backslashes % 2 === 1;
+}
+function canOpenMarkdownDelimiter(source, index, delimiter) {
+  const previous = source[index - 1] || '';
+  const next = source[index + delimiter.length] || '';
+  return !/\s/.test(next) && (!delimiter.includes('_') || !/[A-Za-z0-9]/.test(previous));
+}
+function findMarkdownClosing(source, delimiter, start) {
+  let closing = source.indexOf(delimiter, start);
+  while (closing >= 0) {
+    const previous = source[closing - 1] || '';
+    const next = source[closing + delimiter.length] || '';
+    if (closing > start && !escapedMarkdownDelimiter(source, closing) && !/\s/.test(previous) &&
+        (!delimiter.includes('_') || !/[A-Za-z0-9]/.test(next))) return closing;
+    closing = source.indexOf(delimiter, closing + delimiter.length);
+  }
+  return -1;
+}
+function markdownInlineContent(value, marks = []) {
+  const source = String(value);
+  const content = [];
+  let plain = '';
+  const flush = () => {
+    if (plain) content.push(textNode(plain, marks));
+    plain = '';
+  };
+  for (let index = 0; index < source.length;) {
+    if (source[index] === '\\' && index + 1 < source.length && '\\`*_{}[]()#+-.!~|>'.includes(source[index + 1])) {
+      plain += source[index + 1];
+      index += 2;
+      continue;
+    }
+    const image = source.slice(index).match(/^!\[([^\]]*)\]\(([^)\r\n]+)\)/);
+    if (image) {
+      flush();
+      content.push(...markdownInlineContent(image[1], marks));
+      index += image[0].length;
+      continue;
+    }
+    const link = source.slice(index).match(/^\[([^\]]+)\]\(([^)\r\n]+)\)/);
+    if (link) {
+      flush();
+      const rawDestination = link[2].trim();
+      const destination = rawDestination.startsWith('<')
+        ? rawDestination.slice(1).split('>', 1)[0]
+        : rawDestination.split(/\s+/, 1)[0];
+      const linkMarks = /^(?:https?:\/\/|mailto:)/i.test(destination)
+        ? [...marks, { type: 'link', attrs: { href: destination } }]
+        : marks;
+      content.push(...markdownInlineContent(link[1], linkMarks));
+      index += link[0].length;
+      continue;
+    }
+    if (source[index] === '`') {
+      const delimiter = source.slice(index).match(/^`+/)[0];
+      const closing = source.indexOf(delimiter, index + delimiter.length);
+      if (closing > index + delimiter.length && !escapedMarkdownDelimiter(source, closing)) {
+        flush();
+        content.push(textNode(source.slice(index + delimiter.length, closing), [...marks, { type: 'code' }]));
+        index = closing + delimiter.length;
+        continue;
+      }
+    }
+    const delimiter = markdownInlineDelimiters.find(item =>
+      source.startsWith(item.delimiter, index) && canOpenMarkdownDelimiter(source, index, item.delimiter));
+    if (delimiter) {
+      const start = index + delimiter.delimiter.length;
+      const closing = findMarkdownClosing(source, delimiter.delimiter, start);
+      if (closing > start) {
+        flush();
+        const nestedMarks = [...marks, ...delimiter.marks.map(type => ({ type }))];
+        content.push(...markdownInlineContent(source.slice(start, closing), nestedMarks));
+        index = closing + delimiter.delimiter.length;
+        continue;
+      }
+    }
+    plain += source[index];
+    index++;
+  }
+  flush();
+  return content;
+}
+function paragraph(text) { return { type: 'paragraph', content: markdownInlineContent(text) }; }
 function heading(text) { return { type: 'heading', attrs: { level: 2 }, content: [textNode(text)] }; }
 function bulletList(values) {
   return { type: 'bulletList', content: values.map(value => ({ type: 'listItem', content: [paragraph(value)] })) };
@@ -194,9 +290,10 @@ class JIRAService {
       labels: [`aw-story-${storyId}`]
     };
     if (!fields.summary) throw safeJiraError('Story summary is required');
-    if (this.apiConfig.epicKey) {
-      const parentKey = requireIssueKey(this.apiConfig.epicKey);
-      if (!parentKey.startsWith(`${this.apiConfig.projectKey}-`)) throw safeJiraError('Configured Jira Epic parent must belong to the selected project');
+    const selectedEpicKey = data.epicKey || this.apiConfig.epicKey;
+    if (selectedEpicKey) {
+      const parentKey = requireIssueKey(selectedEpicKey);
+      if (!parentKey.startsWith(`${this.apiConfig.projectKey}-`)) throw safeJiraError('Selected Jira Epic must belong to the configured project');
       fields.parent = { key: parentKey };
     }
     return { fields };
@@ -235,9 +332,11 @@ class JIRAService {
     const pending = this.readPending(storyId);
     let matches = await this.searchStoryIssues(storyId);
     if (matches.length > 1) throw safeJiraError(`Multiple Jira issues match ${storyId}; no issue was created`);
-    if (matches.length === 1) return { key: matches[0].key, url: this.browseUrl(matches[0].key), reused: true };
+    if (matches.length === 1) return { key: matches[0].key, url: this.browseUrl(matches[0].key), reused: true, ...(pending ? { recovered: true } : {}) };
     if (pending) throw safeJiraError(`Jira import for ${storyId} is unresolved; explicitly resolve its pending marker before another create`);
     const payload = this.buildTicketPayload(data);
+    const parentKey = payload.fields.parent?.key;
+    if (parentKey) await this.getEpic(parentKey);
     await this.persistPending(storyId);
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       try {
@@ -260,7 +359,7 @@ class JIRAService {
         }
         if (error.ambiguous) {
           matches = await this.searchStoryIssues(storyId);
-          if (matches.length === 1) return { key: matches[0].key, url: this.browseUrl(matches[0].key), reused: true };
+          if (matches.length === 1) return { key: matches[0].key, url: this.browseUrl(matches[0].key), reused: true, recovered: true };
           if (matches.length > 1) throw safeJiraError(`Multiple Jira issues match ${storyId}; pending import was retained`);
           throw safeJiraError(`Jira issue creation for ${storyId} is ambiguous; pending import was retained`);
         }
@@ -273,11 +372,36 @@ class JIRAService {
 
   async getIssue(issueKey) {
     requireIssueKey(issueKey);
-    const { data } = await this.request(`/issue/${encodeURIComponent(issueKey)}?fields=key,issuetype,project,issuelinks`);
+    const { data } = await this.request(`/issue/${encodeURIComponent(issueKey)}?fields=key,issuetype,project,issuelinks,parent`);
     if (!data?.key || !issueKeyPattern.test(data.key) || data.fields?.project?.key !== this.apiConfig.projectKey) {
       throw safeJiraError('Jira issue is not available in the configured project');
     }
     return data;
+  }
+
+  async getEpic(epicKey) {
+    requireIssueKey(epicKey);
+    if (!epicKey.startsWith(`${this.apiConfig.projectKey}-`)) throw safeJiraError('Selected Jira Epic must belong to the configured project');
+    const { data } = await this.request(`/issue/${encodeURIComponent(epicKey)}?fields=key,issuetype,project,status`);
+    if (data?.key !== epicKey || data.fields?.project?.key !== this.apiConfig.projectKey) {
+      throw safeJiraError('Jira Epic is not available in the configured project');
+    }
+    const issueType = data.fields?.issuetype?.name;
+    if (typeof issueType !== 'string' || issueType.toLowerCase() !== 'epic') throw safeJiraError('Selected Jira parent is not an Epic');
+    return data;
+  }
+
+  async reopenEpicIfDone(epicKey) {
+    const epic = await this.getEpic(epicKey);
+    const status = epic.fields?.status;
+    if (typeof status?.name !== 'string' || !status.name.trim() || typeof status.statusCategory?.key !== 'string') {
+      return { reopened: false, warning: 'Jira Epic completion status is unavailable' };
+    }
+    if (status.statusCategory.key !== 'done') return { reopened: false, status: status.name };
+    const transition = await this.transitionIssue(epicKey, 'todo', { key: epic.key, status: status.name });
+    if (transition.warning) return { reopened: false, warning: transition.warning };
+    if (transition.transitioned) return { reopened: true, from: status.name, status: transition.status };
+    return { reopened: false, ...(transition.alreadyAtTarget ? { alreadyAtTarget: true } : {}), status: transition.status || status.name };
   }
 
   async getIssueStatus(issueKey) {
@@ -289,9 +413,9 @@ class JIRAService {
     return { key: data.key, status: data.fields.status.name };
   }
 
-  async transitionIssue(issueKey, semanticStatus) {
+  async transitionIssue(issueKey, semanticStatus, knownCurrent = null) {
     requireIssueKey(issueKey);
-    if (!['in_progress', 'in_review', 'blocked', 'done'].includes(semanticStatus)) {
+    if (!['todo', 'in_progress', 'in_review', 'blocked', 'done'].includes(semanticStatus)) {
       throw safeJiraError('Invalid Jira lifecycle status');
     }
     const destination = this.statusNames[semanticStatus];
@@ -300,7 +424,8 @@ class JIRAService {
         ? { transitioned: false, skipped: true, reason: 'blocked status is not configured' }
         : { transitioned: false, warning: `Jira status mapping '${semanticStatus}' is not configured` };
     }
-    const current = await this.getIssueStatus(issueKey);
+    const current = knownCurrent || await this.getIssueStatus(issueKey);
+    if (current.key !== issueKey || typeof current.status !== 'string' || !current.status.trim()) throw safeJiraError('Jira issue status is unavailable');
     if (current.status === destination) return { transitioned: false, alreadyAtTarget: true, status: destination };
     const { data } = await this.request(`/issue/${encodeURIComponent(issueKey)}/transitions`);
     if (!Array.isArray(data?.transitions)) throw safeJiraError('Jira transition response was invalid');
@@ -579,6 +704,16 @@ class IntegrationService {
   async createJiraStory(data) {
     const jira = this.requireJiraService();
     try { return await jira.createStoryIssue(data); }
+    catch (error) {
+      const safe = safeProviderError('Jira', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
+    }
+  }
+
+  async reopenJiraEpicIfDone(epicKey) {
+    const jira = this.requireJiraService();
+    try { return await jira.reopenEpicIfDone(epicKey); }
     catch (error) {
       const safe = safeProviderError('Jira', error);
       this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });

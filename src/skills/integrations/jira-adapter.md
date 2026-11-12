@@ -18,9 +18,9 @@ integration_config="$consumer_root/.agent-workflow/integrations.yaml"
 integration_cli="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
 ```
 
-Read only secret-free settings from the config. Credentials come from `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in the process environment. Never print or store their values. Jira must remain disabled until `/aw-integrate-configure` validates the site, identity, project, and configured issue type.
+Read only secret-free settings from the config. The CLI reads `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` from the process environment or consumer-root `.env` and `.env.<NODE_ENV>` (`.env.development` by default; put `NODE_ENV=production` in `.env` to select production). Process values override files, which are Git-ignored. Never print or store credential values. Jira must remain disabled until `/aw-integrate-configure` validates the site, identity, project, and configured issue type.
 
-`jira.issue_type` determines the created issue type. Optional `jira.epic_key` names an existing parent and never causes an Epic to be created. A Jira site API URL is enough to build `/browse/<key>`; a scoped API base requires the optional secret-free `jira.browse_base_url` before writes.
+`jira.issue_type` determines the created issue type. Optional `jira.epic_key` names an existing default parent; a story's `### Epic` section overrides it. The selected parent must be an Epic in the configured project; no Epic is created. Existing issues are never reparented. After a new or recovered Story is verified under its parent, an Epic in Jira's `done` category is transitioned to `jira.status_names.todo`; failed reopen operations warn without undoing the import. A Jira site API URL is enough to build `/browse/<key>`; a scoped API base requires the optional secret-free `jira.browse_base_url` before writes.
 
 ## Lifecycle synchronization
 
@@ -35,7 +35,7 @@ The shared runtime resolves configured destination names through each linked iss
    node "$integration_cli" preview <story-id...>
    ```
 
-   Explain create, reuse, recovery, ambiguous/pending, and dependency-link actions. Preview may search Jira but does not create issues, create issue links, or modify records.
+   Explain create, reuse, recovery, ambiguous/pending, dependency-link, and selected Epic actions. Preview may search Jira but does not create issues, create issue links, or modify records.
 3. Ask the user to confirm the displayed plan. On cancellation, stop without writes.
 4. After explicit confirmation, run the separate write action:
 
@@ -43,7 +43,7 @@ The shared runtime resolves configured destination names through each linked iss
    node "$integration_cli" import <story-id...> --confirm
    ```
 
-   The CLI rechecks Jira, creates or reuses exactly one configured-type issue per selected story, and writes the local link only after verifying the issue. The ADF description includes the user story, acceptance text without checkbox state, and dependency references. A stable `aw-story-<story-id>` label is used for matching.
+   The CLI rechecks Jira, creates or reuses exactly one configured-type issue per selected story, and writes the local link only after verifying the issue. The ADF description includes the user story, acceptance text without checkbox state, and dependency references. A stable `aw-story-<story-id>` label is used for matching. A new story's selected Epic becomes the Jira parent; only a newly created/recovered story under a completed Epic may transition that Epic to `status_names.todo`.
 5. Dependencies are linked with Jira's `Blocks` relationship only when both stories have local Jira references; report a missing/denied link separately without losing a successful issue record.
 
 Jira records belong in the current worktree's `docs/integrations/<story-id>.md` and contain only the Jira key and browse URL in the Jira section. Preserve GitHub and all unrelated record data.

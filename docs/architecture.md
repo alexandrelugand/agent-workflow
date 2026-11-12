@@ -38,7 +38,7 @@
 | Status, priority, assignee | Live Jira fields; never copied to the local record | Jira |
 | PR URL / verified merge | Idempotent remote issue link and Jira workflow state | GitHub merge proof authorizes Jira update |
 
-An optional configured Epic parent may be used where the target project supports Jira's parent field. The integration never creates an Epic or Requirement for each story.
+An optional existing Epic parent may come from `jira.epic_key` or a story's `### Epic` section, which takes precedence. The runtime validates it in the configured project and never creates an Epic or Requirement. Existing issues are not reparented; a successfully created or recovered story may reopen a completed parent to configured `status_names.todo`.
 
 ## Integration points
 

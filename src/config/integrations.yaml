@@ -7,9 +7,10 @@ integrations:
     issue_type: "Story"
     # Optional human-facing Jira site URL when JIRA_API_URL is a scoped API base.
     browse_base_url: ""
-    # Optional existing Epic key; stories are never assigned a parent by default.
+    # Optional existing default Epic; a story's ### Epic value overrides it.
     epic_key: ""
     status_names:
+      # Reopen a completed parent Epic to this destination after story creation.
       todo: "To Do"
       in_progress: "In Progress"
       in_review: "In Review"

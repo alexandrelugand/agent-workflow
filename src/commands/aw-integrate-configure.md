@@ -10,7 +10,7 @@ allowed-tools:
 
 Jira is optional and disabled by default. Runtime settings are stored in the user-owned `.agent-workflow/integrations.yaml`; the installer never overwrites it. Never place credentials or environment-variable expansions in that file.
 
-For Jira, set these in the invoking process environment or a user-managed secret store: `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`. Do not paste their values into command output, repository files, or logs.
+For Jira, configure `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in the invoking process environment, in local Git-ignored `.env` / `.env.<NODE_ENV>` files at the consumer root, or in a user-managed secret store. The CLI loads `.env` plus `.env.<NODE_ENV>`; it defaults to `.env.development`, and process values override file values. To use `.env.production` without a system setting, put `NODE_ENV=production` in `.env`. Never print the values or store them in YAML, tracked files, or logs.
 
 At the start of this command, resolve the consumer root; story commands run in `.worktrees/<id>`, while `.agent-workflow` is shared at the repository root:
 
