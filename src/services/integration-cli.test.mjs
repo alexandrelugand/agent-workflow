@@ -518,21 +518,81 @@ test('lifecycle action skips unlinked stories without Jira requests', async () =
   } finally { fixture.clean(); }
 });
 
-test('lifecycle action cannot request Jira Done without verified merge proof', async () => {
+test('passing review marks a Story Done and completes its Epic when all child Stories are Done', async () => {
   const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
-  let requests = 0;
+  let storyStatus = 'In Review';
+  let epicStatus = 'In Progress';
+  const posts = [];
   try {
-    const result = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'done', pullRequestUrl: 'https://github.com/acme/repo/pull/42', ...fixture.options, fetchImpl: async () => { requests++; } });
-    assert.deepEqual(result, { storyId: 's02-jira-import', synced: false, warning: 'Jira Done requires a verified merged PR URL' });
-    assert.equal(requests, 0);
+    const story = jiraIssue('DEMO-17');
+    story.fields.parent = { key: 'DEMO-99' };
+    const result = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'done', ...fixture.options, fetchImpl: async (url, options = {}) => {
+      if (url.endsWith('/issue/DEMO-17?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse(story);
+      if (url.endsWith('/issue/DEMO-99?fields=key,issuetype,project,status')) return jiraResponse({
+        key: 'DEMO-99', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Epic' }, status: { name: epicStatus } }
+      });
+      if (url.endsWith('/issue/DEMO-17?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: storyStatus } } });
+      if (url.endsWith('/search/jql')) return jiraResponse({ issues: [{
+        key: 'DEMO-17', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Story' }, parent: { key: 'DEMO-99' }, status: { name: 'In Review' } }
+      }], isLast: true });
+      if (url.endsWith('/transitions')) {
+        if (options.method === 'POST') {
+          posts.push({ issue: url.includes('/DEMO-99/') ? 'DEMO-99' : 'DEMO-17', body: JSON.parse(options.body) });
+          if (url.includes('/DEMO-99/')) epicStatus = 'Done';
+          else storyStatus = 'Done';
+          return jiraResponse({}, 204);
+        }
+        return jiraResponse({ transitions: [{ id: url.includes('/DEMO-99/') ? '99' : '17', to: { name: 'Done' } }] });
+      }
+      throw new Error('unexpected synthetic request');
+    } });
+    assert.equal(result.synced, true);
+    assert.deepEqual(result.transition, { transitioned: true });
+    assert.deepEqual(result.epic, { key: 'DEMO-99', targetStatus: 'done', status: 'Done', transitioned: true });
+    assert.deepEqual(posts, [
+      { issue: 'DEMO-17', body: { transition: { id: '17' } } },
+      { issue: 'DEMO-99', body: { transition: { id: '99' } } }
+    ]);
   } finally { fixture.clean(); }
 });
 
-test('lifecycle action keeps open PRs In Review and updates one remote link on verified merge', async () => {
+test('starting or resuming a Story moves its parent Epic to In Progress', async () => {
+  const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
+  let storyStatus = 'In Review';
+  let epicStatus = 'Done';
+  try {
+    const story = jiraIssue('DEMO-17');
+    story.fields.parent = { key: 'DEMO-99' };
+    const result = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'in_progress', ...fixture.options, fetchImpl: async (url, options = {}) => {
+      if (url.endsWith('/issue/DEMO-17?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse(story);
+      if (url.endsWith('/issue/DEMO-99?fields=key,issuetype,project,status')) return jiraResponse({
+        key: 'DEMO-99', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Epic' }, status: { name: epicStatus } }
+      });
+      if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: storyStatus } } });
+      if (url.endsWith('/search/jql')) return jiraResponse({ issues: [{
+        key: 'DEMO-17', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Story' }, parent: { key: 'DEMO-99' }, status: { name: 'In Review' } }
+      }], isLast: true });
+      if (url.endsWith('/transitions')) {
+        if (options.method === 'POST') {
+          if (url.includes('/DEMO-99/')) epicStatus = 'In Progress';
+          else storyStatus = 'In Progress';
+          return jiraResponse({}, 204);
+        }
+        return jiraResponse({ transitions: [{ id: '17', to: { name: 'In Progress' } }] });
+      }
+      throw new Error('unexpected synthetic request');
+    } });
+    assert.equal(result.synced, true);
+    assert.equal(result.transition.transitioned, true);
+    assert.deepEqual(result.epic, { key: 'DEMO-99', targetStatus: 'in_progress', status: 'In Progress', transitioned: true });
+  } finally { fixture.clean(); }
+});
+
+test('review-complete Stories stay Done while their PR link moves from Open to Merged', async () => {
   const record = '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n';
   const fixture = importerFixture({ record });
   const linkBodies = [];
-  let currentStatus = 'In Review';
+  let currentStatus = 'Done';
   try {
     const fetchImpl = async (url, options = {}) => {
       if (url.endsWith('?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' } } });
@@ -543,13 +603,13 @@ test('lifecycle action keeps open PRs In Review and updates one remote link on v
       throw new Error('unexpected synthetic request');
     };
     const before = readFileSync(join(fixture.worktree, 'docs/integrations/s02-jira-import.md'), 'utf8');
-    const open = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'in_review', pullRequestUrl: 'https://github.com/acme/repo/pull/42', ...fixture.options, fetchImpl });
+    const open = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'done', pullRequestUrl: 'https://github.com/acme/repo/pull/42', ...fixture.options, fetchImpl });
     assert.equal(open.synced, true);
     assert.equal(open.transition.alreadyAtTarget, true);
     assert.equal(open.pullRequestLinked, true);
-    const done = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'done', pullRequestUrl: 'https://github.com/acme/repo/pull/42', merged: true, ...fixture.options, fetchImpl });
-    assert.equal(done.synced, true);
-    assert.equal(done.transition.transitioned, true);
+    const merged = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'done', pullRequestUrl: 'https://github.com/acme/repo/pull/42', merged: true, ...fixture.options, fetchImpl });
+    assert.equal(merged.synced, true);
+    assert.equal(merged.transition.alreadyAtTarget, true);
     assert.equal(linkBodies.length, 2);
     assert.equal(linkBodies[0].globalId, linkBodies[1].globalId);
     assert.equal(linkBodies[0].object.status.resolved, false);
@@ -591,13 +651,23 @@ test('lifecycle action records a PR link and continues when the Jira transition 
   } finally { fixture.clean(); }
 });
 
-test('invalid pull-request URL prevents the Jira Done transition', async () => {
+test('invalid pull-request URL warns but does not block review-complete Done', async () => {
   const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
-  let requests = 0;
+  const requests = [];
   try {
-    const result = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'done', pullRequestUrl: 'https://github.com/acme/repo/issues/42', merged: true, ...fixture.options, fetchImpl: async () => { requests++; throw new Error('unexpected request'); } });
-    assert.deepEqual(result, { storyId: 's02-jira-import', issueKey: 'DEMO-17', targetStatus: 'done', synced: false, warning: 'Invalid PR URL; Jira Done was not attempted' });
-    assert.equal(requests, 0);
+    const result = await syncJiraLifecycle({ storyId: 's02-jira-import', status: 'done', pullRequestUrl: 'https://github.com/acme/repo/issues/42', ...fixture.options, fetchImpl: async (url, options = {}) => {
+      requests.push({ url, options });
+      if (url.endsWith('?fields=key,issuetype,project,issuelinks,parent')) return jiraResponse(jiraIssue('DEMO-17'));
+      if (url.endsWith('?fields=key,status,project')) return jiraResponse({ key: 'DEMO-17', fields: { project: { key: 'DEMO' }, status: { name: 'In Review' } } });
+      if (url.endsWith('/transitions') && options.method === 'POST') return jiraResponse({}, 204);
+      if (url.endsWith('/transitions')) return jiraResponse({ transitions: [{ id: '17', to: { name: 'Done' } }] });
+      throw new Error('unexpected synthetic request');
+    } });
+    assert.equal(result.synced, false);
+    assert.deepEqual(result.transition, { transitioned: true });
+    assert.equal(result.pullRequestLinked, false);
+    assert.deepEqual(result.warnings, ['Jira PR link failed (invalid HTTPS pull request URL)']);
+    assert.equal(requests.some(request => request.url.endsWith('/remotelink')), false);
   } finally { fixture.clean(); }
 });
 

@@ -24,7 +24,7 @@ Read only secret-free settings from the config. The CLI reads `JIRA_API_URL`, `J
 
 ## Lifecycle synchronization
 
-The shared runtime resolves configured destination names through each linked issue's available Jira transitions. Execution requests `in_progress`; review requests `in_review` and may request optional `blocked` after rejection; only `/aw-ship` may request `done`, after it verifies the PR is merged. PR remote links use a stable ID and are updated rather than duplicated. Lifecycle Jira errors are warnings; disabled/incomplete Jira stays request-free. `/aw-integrate-status` and `/aw-status` read Jira's actual status and report fetch failures as unavailable.
+Pipeline lifecycle calls are fail-soft: `/aw-research` and the orchestrator start a linked Story as In Progress; `/aw-review` sets In Review, then Done on a passing review; `/aw-execute` returns implementation fixes to In Progress. A parent Epic moves to In Progress when any configured child Story is In Progress and to Done only when all are Done. `/aw-ship` keeps the Story Done and updates the idempotent PR link to Merged only after verifying the PR is merged.
 
 ## Explicit import workflow
 
@@ -58,4 +58,4 @@ node "$integration_cli" resolve-pending <story-id> --confirm-not-created
 
 For one existing Jira issue, `/aw-integrate-link <story-id> <jira-key> jira` validates the project and configured type and refuses to replace a different local key. `/aw-integrate-unlink <story-id> jira` removes only the local Jira section and never deletes the Jira issue.
 
-Do not mirror fetched Jira status into local integration records or infer it from checkboxes. Pipeline commands own lifecycle requests; `/aw-ship` requires verified merge proof before Done.
+Do not mirror fetched Jira status into local integration records or infer it from checkboxes. Pipeline commands own lifecycle requests. Story Done means review passed; verified merge proof is required only to mark the Jira PR remote link as Merged.

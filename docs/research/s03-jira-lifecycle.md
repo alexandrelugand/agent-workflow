@@ -6,7 +6,7 @@
 - Jira's `status_names` is nested in `src/config/integrations.yaml:12-16`, but `IntegrationService.parseYAML()` at `src/services/integration-service.mjs:355-373` reads only four-space scalar fields; the configured transition destinations are not currently available as nested data.
 - Jira Cloud returns per-issue available transitions from `GET /rest/api/3/issue/{issueIdOrKey}/transitions`; the destination is `transition.to.name`, and `POST .../transitions` requires that returned transition's ID. Missing transition permission can produce an empty list rather than an HTTP failure. [Atlassian transition API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/#api-rest-api-3-issue-issueidorkey-transitions-get)
 - The S02 CLI stores the only story-to-issue mapping in `docs/integrations/<story-id>.md`; `getStatus()` in `src/services/integration-cli.mjs:65-73` currently returns configuration booleans only and makes no status request.
-- `/aw-ship` is manual by default: an open PR is not merged, and cleanup requires a fresh `gh pr view` result exactly equal to `MERGED` (`src/commands/aw-ship.md:22-49`). Jira Done must be issued only after that proof; lifecycle request failures must not stop local work.
+- `/aw-ship` is manual by default: an open PR is not merged, and cleanup requires a fresh `gh pr view` result exactly equal to `MERGED` (`src/commands/aw-ship.md:22-49`). A passing review marks Jira Done; merge proof is required only to mark the PR remote link Merged. Lifecycle request failures must not stop local work.
 
 ## Target story
 
@@ -14,13 +14,14 @@ A linked Jira issue reflects actual execution, review, and verified delivery. Ji
 
 Acceptance criteria (`docs/stories.md:63-69`):
 
-- At execution start, resolve configured `in_progress` against that issue's available transitions and post the returned ID. Missing destinations warn without stopping execution.
-- At review start, resolve configured `in_review`. A rejected review is never Done; use `blocked` only when explicitly configured and an applicable transition exists.
-- Only `/aw-ship` may mark Done, after verified PR merge. An open/manual PR is not proof. Add an idempotent Jira remote link for the PR and record the verified merge outcome without copying the pipeline history.
+- At `/aw-research` or orchestrator start, and when `/aw-execute` begins implementation or review fixes, resolve configured `in_progress` against that issue's available transitions and post the returned ID. Missing destinations warn without stopping local work.
+- At review start, resolve configured `in_review`. A rejected review is never Done; use `blocked` only when explicitly configured and an applicable transition exists. A passing review resolves configured `done` without requiring a merged PR.
+- Reconcile a parent Epic after each child Story transition: move it to configured `in_progress` when any configured child Story is `in_progress`, and to configured `done` only when every configured child Story is `done`.
+- `/aw-ship` maintains an idempotent Jira PR remote link and records Merged only after it verifies the PR's merged state; merge proof does not gate Story Done.
 - `/aw-integrate-status` shows linked keys plus fetched Jira statuses. `/aw-status` reports local and Jira state separately and shows failed Jira reads as unavailable.
 - Lifecycle Jira failures warn and fail soft. Explicit configure/import operations keep their existing fail-closed behavior.
 
-## Current state of the code
+## Pre-implementation baseline (historical)
 
 - `src/services/integration-service.mjs` centralizes Jira REST requests, issue lookup, and dependency linking. Its generic request helper uses the approved Jira base URL, redacted errors, and no automatic request retry; issue creation owns its separate ambiguity-aware retry loop. `JIRAService.syncStory()` is the remaining false-success stub.
 - The source config already declares `todo`, `in_progress`, `in_review`, and `done` names, but the minimal YAML parser does not preserve the nested `status_names` map. The schema must remain within the accepted runtime-config ADR; no YAML package is present or needed.

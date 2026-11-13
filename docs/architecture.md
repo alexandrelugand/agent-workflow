@@ -24,7 +24,7 @@
 - Keep runtime configuration declarative and secret-free. Semantic status destinations (`todo`, `in_progress`, `in_review`, optional `blocked`, `done`) map to Jira status names; transitions are discovered for each issue and invoked by the returned transition ID.
 - A story has one Jira issue. Its Jira label `aw-story-<story-id>` is the stable marker; user story, acceptance criteria, and dependency references remain in the repository. Jira owns live status, priority, and assignee; local integration records do not mirror them.
 - Use Atlassian Document Format for Jira v3 descriptions. Search by the stable label before creating and after any ambiguous create response. Dependency links use the project's available `Blocks` link type; unsupported links remain visible in the issue text and command result.
-- `/aw-ship` is the only path to Jira `done`: its local merge proof must precede the transition. A PR is represented by an idempotent Jira remote link; the verified merge outcome is recorded without copying pipeline history.
+- Research/orchestrated start and implementation fixes request Story `in_progress`; review start requests `in_review`; a passing review requests `done`. Parent Epics enter `in_progress` when any configured child Story is in progress and enter `done` only when all configured child Stories are done. Jira transitions remain best-effort and use per-issue transition IDs; the merge gate governs only the PR remote-link Merged outcome.
 
 ## Data model
 
@@ -36,7 +36,7 @@
 | Story dependencies | Jira issue links when available; text references otherwise | Repository content |
 | Jira issue key and browse URL | `docs/integrations/<story-id>.md` | Local pointer only |
 | Status, priority, assignee | Live Jira fields; never copied to the local record | Jira |
-| PR URL / verified merge | Idempotent remote issue link and Jira workflow state | GitHub merge proof authorizes Jira update |
+| PR URL / verified merge | Idempotent remote issue link | GitHub proof authorizes only the link's Merged outcome, not Story Done |
 
 An optional existing Epic parent may come from `jira.epic_key` or a story's `### Epic` section, which takes precedence. The runtime validates it in the configured project and never creates an Epic or Requirement. Existing issues are not reparented; a successfully created or recovered story may reopen a completed parent to configured `status_names.todo`.
 

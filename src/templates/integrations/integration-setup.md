@@ -33,6 +33,8 @@ Use `/aw-integrate-configure` to run the explicit Jira identity, project, and is
 
 The names are Jira destination statuses, not transition IDs; the runtime discovers the available transition for each issue. `blocked` is optional and is attempted only after a rejected review when configured and available.
 
+`/aw-research` and the orchestrator set linked Stories to `in_progress`; `/aw-review` sets `in_review` and sets `done` after a passing review. `/aw-execute` returns review fixes to `in_progress`. Parent Epics move to `in_progress` when any configured child Story is in progress and to `done` only when all child Stories are done. `/aw-ship` requires a verified merge only to mark its PR remote link as Merged.
+
 `/aw-integrate-status` shows linked issue keys and fetched Jira status, with failed reads marked unavailable. Never print or log credentials, authorization headers, raw provider responses, request payloads, raw configuration, or Jira URLs.
 
 ## Other providers

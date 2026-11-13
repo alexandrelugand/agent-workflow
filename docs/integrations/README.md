@@ -31,3 +31,5 @@ The importer updates only the Jira section and preserves GitHub references and u
 A non-secret pending marker under the ignored shared `.agent-workflow/jira-import-pending/` directory prevents duplicate creates after ambiguous outcomes. Never blindly retry a possibly accepted create. Exactly one marker match is reconciled; zero or multiple matches retain pending state until a human explicitly confirms no issue was created.
 
 Jira status, priority, assignee, transitions, and PR synchronization are not stored in these records and belong to the separate lifecycle story.
+
+When Jira is enabled, `/aw-research` and the orchestrator start Stories as In Progress; review starts In Review and a passing review moves the Story to Done. `/aw-execute` returns fixes to In Progress. Parent Epics become In Progress when any child Story is In Progress and Done only when all child Stories are Done. `/aw-ship` updates the PR link to Merged only after a verified merge; it does not gate Story Done.

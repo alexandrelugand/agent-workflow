@@ -65,6 +65,18 @@ If Telegram is enabled in `"$consumer_root/.agent-workflow/integrations.yaml"`:
 **Note**: Integration setup is optional. Jira issues are created only through explicit user-selected import; no Jira issue is initialized automatically.
 
 ## Phase 1 — Research
+
+At the start of this phase, from the verified worktree, best-effort request Jira `in_progress` before producing or reusing the research report:
+
+```sh
+worktree="<absolute .worktrees/<id>>"
+git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" in_progress); fi
+```
+
+Missing runtime, disabled/incomplete Jira, or an unlinked story is a normal skip. Surface warnings and continue Research.
 If docs/research/<id>.md doesn't exist, produce it now following the aw-research contract: codebase-analysis skill on the story's scope, current state of the code, output structured by @templates/research.md. Otherwise reuse the existing file.
 
 ## Phase 2 — Design (UI stories only)
@@ -108,6 +120,8 @@ if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" i
 Disabled/incomplete Jira, an unlinked story, or absent runtime is a normal skip. Surface sync warnings/errors and continue the independent review.
 Delegate to the `reviewer` subagent exactly as /aw-review does: fresh context, story diff `git diff <default-branch>...feature/<id>`, test suite run by the reviewer, verdict ending with the exact `Max severity:` and `Ship allowed:` lines. Write the report to docs/reviews/<id>.md.
 
+After the reviewer writes its report, if the verdict is `Ship allowed: yes`, best-effort request Jira `done` from the verified worktree. This review-pass transition does not require a merged PR; Jira failure warns without changing the verdict or ship gate.
+
 **Telegram Notifications** (if enabled):
 - Send review results
 - Alert on review passed or failed
@@ -124,13 +138,13 @@ runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
 if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" blocked); fi
 ```
 
-An unconfigured `blocked` status is skipped; Jira warnings never soften or open the review gate, and Done is never requested here.
+An unconfigured `blocked` status is skipped; Jira warnings never soften or open the review gate. A rejected review is not Done; Phase 4 requests `in_progress` before any implementation fixes.
 Gate: verdict `Ship allowed: no` → go back to Phase 4 in fix mode. Maximum 2 fix loops; still blocked after that → stop and report the open findings. Never soften a verdict to move on.
 
 ## Phase 6 — Ship
 CHECKPOINT — review passed: show the verdict and ask via AskUserQuestion: "Ship now?" — options: Ship / Not now. Only an explicit Ship proceeds; then run /aw-ship's flow: mechanical gate (`grep -q '^Ship allowed: yes' docs/reviews/<id>.md`), tests on the branch, push, PR — then the project's ship strategy (manual, the default: stop at the PR; auto: merge, deploy, confirm live, clean up the branch once the merge is proven).
 
-Jira lifecycle remains best effort within `/aw-ship`: link an opened PR and keep its issue In Review; after `/aw-ship` verifies the PR state is exactly `MERGED`, request `lifecycle <id> done --pr-url <url> --merged`. Never send Done for an open/manual PR. Surface Jira warnings but continue the existing ship/cleanup rules.
+Jira lifecycle remains best effort within `/aw-ship`: the Story was marked Done on review pass. For an open PR, run `lifecycle <id> done --pr-url <url>` to preserve Done while upserting the PR link as Open. After exact `MERGED` proof, run `lifecycle <id> done --pr-url <url> --merged` to update that same link; `--merged` records the PR outcome and is not the Done gate. Jira warnings never block the local ship/cleanup rules.
 
 **Telegram Notifications** (if enabled):
 - Send PR created notification

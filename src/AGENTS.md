@@ -198,7 +198,7 @@ deleted is worse than no test** — it hides the hole it claims to cover.
 - Jira credentials are runtime environment values. The CLI loads `JIRA_API_URL`, `JIRA_PROJECT_KEY`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` from the process environment or consumer-root `.env` / `.env.<NODE_ENV>` files; these local files must be Git-ignored. Status, logs, errors, tests, and command output must not expose secret values or Authorization headers.
 - Jira HTTP behavior is tested with injected/mock `fetch` and synthetic credentials using `node:test`; no permanent test contacts Jira. Use `node --test` for the focused Node suite.
 - Keep Jira optional: disabled or incomplete configuration means no network request; pipeline sync failures are explicit and fail-soft. Use Jira Cloud REST v3 contracts, ADF descriptions, stable `aw-story-<id>` labels, and per-issue transition discovery.
-- Only a verified merged PR may trigger the Jira `done` transition; never infer Jira status from local Markdown state.
+- Jira Story transitions follow pipeline events: Research/orchestrated start and implementation fixes request `in_progress`, review start requests `in_review`, and a passed review requests `done`. Rejected reviews may request optional `blocked`; execution returns a fixed Story to `in_progress`. A parent Epic becomes `in_progress` when any configured child Story is in progress and `done` only when all such Stories are done. Jira remains best-effort; do not infer status from local Markdown or require merge proof for review-complete Done.
 
 ## Definition of Done (per feature)
 - Single PR, structured description, readable diff

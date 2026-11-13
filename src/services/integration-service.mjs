@@ -279,6 +279,38 @@ class JIRAService {
     return matches;
   }
 
+  async searchEpicStoryStatuses(epicKey) {
+    requireIssueKey(epicKey);
+    if (!epicKey.startsWith(`${this.apiConfig.projectKey}-`)) throw safeJiraError('Jira Epic must belong to the configured project');
+    if (typeof this.apiConfig.issueType !== 'string' || !this.apiConfig.issueType.trim()) {
+      throw safeJiraError('Configure jira.issue_type before synchronizing Jira Epics');
+    }
+    const jql = `project = "${escapeJql(this.apiConfig.projectKey)}" AND parent = "${escapeJql(epicKey)}" AND issuetype = "${escapeJql(this.apiConfig.issueType)}"`;
+    const stories = [];
+    const seenTokens = new Set();
+    let nextPageToken;
+    for (;;) {
+      const body = { jql, fields: ['key', 'status', 'project', 'issuetype', 'parent'], maxResults: 100 };
+      if (nextPageToken) body.nextPageToken = nextPageToken;
+      const { data } = await this.request('/search/jql', { method: 'POST', body });
+      if (!Array.isArray(data?.issues)) throw safeJiraError('Jira Epic story search response was invalid');
+      for (const issue of data.issues) {
+        if (!issueKeyPattern.test(issue.key || '') || issue.fields?.project?.key !== this.apiConfig.projectKey ||
+            issue.fields?.issuetype?.name !== this.apiConfig.issueType || issue.fields?.parent?.key !== epicKey) {
+          throw safeJiraError('Jira Epic story search returned an unexpected issue');
+        }
+        const status = issue.fields?.status?.name;
+        if (typeof status !== 'string' || !status.trim()) throw safeJiraError('Jira Epic child story status is unavailable');
+        stories.push({ key: issue.key, status });
+      }
+      if (data.isLast === true) break;
+      nextPageToken = data.nextPageToken;
+      if (!nextPageToken || seenTokens.has(nextPageToken)) throw safeJiraError('Jira Epic story pagination was invalid');
+      seenTokens.add(nextPageToken);
+    }
+    return stories;
+  }
+
   buildTicketPayload(data) {
     const storyId = requireStoryId(data.storyId);
     if (!this.apiConfig.issueType) throw safeJiraError('Configure jira.issue_type before importing stories');
@@ -379,13 +411,18 @@ class JIRAService {
     return data;
   }
 
-  async getEpic(epicKey) {
-    requireIssueKey(epicKey);
-    if (!epicKey.startsWith(`${this.apiConfig.projectKey}-`)) throw safeJiraError('Selected Jira Epic must belong to the configured project');
-    const { data } = await this.request(`/issue/${encodeURIComponent(epicKey)}?fields=key,issuetype,project,status`);
-    if (data?.key !== epicKey || data.fields?.project?.key !== this.apiConfig.projectKey) {
-      throw safeJiraError('Jira Epic is not available in the configured project');
+  async getParentIssue(issueKey) {
+    requireIssueKey(issueKey);
+    if (!issueKey.startsWith(`${this.apiConfig.projectKey}-`)) throw safeJiraError('Jira parent must belong to the configured project');
+    const { data } = await this.request(`/issue/${encodeURIComponent(issueKey)}?fields=key,issuetype,project,status`);
+    if (data?.key !== issueKey || data.fields?.project?.key !== this.apiConfig.projectKey) {
+      throw safeJiraError('Jira parent is not available in the configured project');
     }
+    return data;
+  }
+
+  async getEpic(epicKey) {
+    const data = await this.getParentIssue(epicKey);
     const issueType = data.fields?.issuetype?.name;
     if (typeof issueType !== 'string' || issueType.toLowerCase() !== 'epic') throw safeJiraError('Selected Jira parent is not an Epic');
     return data;
@@ -402,6 +439,40 @@ class JIRAService {
     if (transition.warning) return { reopened: false, warning: transition.warning };
     if (transition.transitioned) return { reopened: true, from: status.name, status: transition.status };
     return { reopened: false, ...(transition.alreadyAtTarget ? { alreadyAtTarget: true } : {}), status: transition.status || status.name };
+  }
+
+  async syncEpicLifecycle(epicKey, storyUpdate = null) {
+    const epic = await this.getParentIssue(epicKey);
+    const issueType = epic.fields?.issuetype?.name;
+    if (typeof issueType !== 'string' || issueType.toLowerCase() !== 'epic') {
+      return { key: epicKey, skipped: true, reason: 'Parent issue is not an Epic' };
+    }
+    const currentStatus = epic.fields?.status?.name;
+    if (typeof currentStatus !== 'string' || !currentStatus.trim()) throw safeJiraError('Jira Epic status is unavailable');
+    const storyStatuses = await this.searchEpicStoryStatuses(epicKey);
+    if (storyUpdate) {
+      requireIssueKey(storyUpdate.issueKey);
+      const currentStory = storyStatuses.find(story => story.key === storyUpdate.issueKey);
+      const updatedStatus = this.statusNames[storyUpdate.semanticStatus];
+      if (typeof updatedStatus !== 'string' || !updatedStatus.trim()) throw safeJiraError('Jira Story lifecycle status mapping is unavailable');
+      if (currentStory) currentStory.status = updatedStatus;
+      else storyStatuses.push({ key: storyUpdate.issueKey, status: updatedStatus });
+    }
+    if (!storyStatuses.length) return { key: epicKey, status: currentStatus, skipped: true, reason: 'Epic has no child stories' };
+    const target = storyStatuses.some(story => story.status === this.statusNames.in_progress)
+      ? 'in_progress'
+      : storyStatuses.every(story => story.status === this.statusNames.done) ? 'done' : null;
+    if (!target) return { key: epicKey, status: currentStatus, transitioned: false };
+    const transition = await this.transitionIssue(epicKey, target, { key: epicKey, status: currentStatus });
+    return {
+      key: epicKey,
+      targetStatus: target,
+      status: transition.status || currentStatus,
+      transitioned: transition.transitioned,
+      ...(transition.alreadyAtTarget ? { alreadyAtTarget: true } : {}),
+      ...(transition.warning ? { warning: transition.warning } : {}),
+      ...(transition.skipped ? { skipped: true, reason: transition.reason } : {})
+    };
   }
 
   async getIssueStatus(issueKey) {
@@ -714,6 +785,16 @@ class IntegrationService {
   async reopenJiraEpicIfDone(epicKey) {
     const jira = this.requireJiraService();
     try { return await jira.reopenEpicIfDone(epicKey); }
+    catch (error) {
+      const safe = safeProviderError('Jira', error);
+      this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });
+      throw safe;
+    }
+  }
+
+  async syncJiraEpicLifecycle(epicKey, storyUpdate = null) {
+    const jira = this.requireJiraService();
+    try { return await jira.syncEpicLifecycle(epicKey, storyUpdate); }
     catch (error) {
       const safe = safeProviderError('Jira', error);
       this.log('error', safe.message, safe.status === undefined ? {} : { statusCode: safe.status });

@@ -419,6 +419,78 @@ test('unavailable or denied Jira dependency linking is reported without a link w
   } finally { file.clean(); }
 });
 
+test('Epic moves to In Progress when a child Story is in progress, across search pages', async () => {
+  const file = fixture(jiraConfig(true));
+  const pageTokens = [];
+  let posted;
+  try {
+    const service = await activeService(file, async (url, options = {}) => {
+      if (url.endsWith('?fields=key,issuetype,project,status')) return jiraResponse({
+        key: 'DEMO-99', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Epic' }, status: { name: 'Done' } }
+      });
+      if (url.endsWith('/search/jql')) {
+        const body = JSON.parse(options.body);
+        assert.equal(body.jql, 'project = "DEMO" AND parent = "DEMO-99" AND issuetype = "Story"');
+        assert.deepEqual(body.fields, ['key', 'status', 'project', 'issuetype', 'parent']);
+        pageTokens.push(body.nextPageToken || null);
+        const status = body.nextPageToken ? 'In Progress' : 'To Do';
+        return jiraResponse({ issues: [{
+          key: body.nextPageToken ? 'DEMO-2' : 'DEMO-1',
+          fields: { project: { key: 'DEMO' }, issuetype: { name: 'Story' }, parent: { key: 'DEMO-99' }, status: { name: status } }
+        }], isLast: Boolean(body.nextPageToken), ...(!body.nextPageToken ? { nextPageToken: 'page-2' } : {}) });
+      }
+      if (url.endsWith('/transitions')) {
+        if (options.method === 'POST') { posted = JSON.parse(options.body); return jiraNoBody(204); }
+        return jiraResponse({ transitions: [{ id: '17', to: { name: 'In Progress' } }] });
+      }
+      throw new Error('unexpected synthetic request');
+    });
+    assert.deepEqual(await service.syncJiraEpicLifecycle('DEMO-99'), {
+      key: 'DEMO-99', targetStatus: 'in_progress', status: 'In Progress', transitioned: true
+    });
+    assert.deepEqual(pageTokens, [null, 'page-2']);
+    assert.deepEqual(posted, { transition: { id: '17' } });
+  } finally { file.clean(); }
+});
+
+test('Epic becomes Done only when every child Story is Done', async t => {
+  for (const [name, storyStatuses, expectedTarget] of [
+    ['all done', ['Done', 'Done'], 'done'],
+    ['one unfinished', ['Done', 'In Review'], null],
+    ['no child stories', [], null]
+  ]) {
+    await t.test(name, async () => {
+      const file = fixture(jiraConfig(true));
+      const requests = [];
+      try {
+        const service = await activeService(file, async (url, options = {}) => {
+          requests.push({ url, options });
+          if (url.endsWith('?fields=key,issuetype,project,status')) return jiraResponse({
+            key: 'DEMO-99', fields: { project: { key: 'DEMO' }, issuetype: { name: 'Epic' }, status: { name: 'In Progress' } }
+          });
+          if (url.endsWith('/search/jql')) return jiraResponse({ issues: storyStatuses.map((status, index) => ({
+            key: `DEMO-${index + 1}`,
+            fields: { project: { key: 'DEMO' }, issuetype: { name: 'Story' }, parent: { key: 'DEMO-99' }, status: { name: status } }
+          })), isLast: true });
+          if (url.endsWith('/transitions') && options.method !== 'POST') return jiraResponse({ transitions: [{ id: '42', to: { name: 'Done' } }] });
+          if (url.endsWith('/transitions') && options.method === 'POST') return jiraNoBody(204);
+          throw new Error('unexpected synthetic request');
+        });
+        const result = await service.syncJiraEpicLifecycle('DEMO-99');
+        if (expectedTarget) {
+          assert.equal(result.targetStatus, expectedTarget);
+          assert.equal(result.transitioned, true);
+          assert.equal(requests.some(request => request.url.endsWith('/transitions') && request.options.method === 'POST'), true);
+        } else {
+          assert.equal(result.transitioned, storyStatuses.length > 0 ? false : undefined);
+          assert.equal(result.skipped, storyStatuses.length === 0 ? true : undefined);
+          assert.equal(requests.some(request => request.url.endsWith('/transitions') && request.options.method === 'POST'), false);
+        }
+      } finally { file.clean(); }
+    });
+  }
+});
+
 test('configured Jira status names resolve the available destination and post its transition ID', async () => {
   const file = fixture(jiraConfig(true, '    status_names:\n      in_progress: "Doing"\n      blocked: "Blocked"\n'));
   const requests = [];

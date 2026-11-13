@@ -21,6 +21,20 @@ returns the absolute `.worktrees/<id>` path, confirms branch `feature/<id>` and
 a clean status. Perform every Research read and write in that worktree. Never
 create or checkout the feature branch in the repository base directory.
 
+## Jira lifecycle — best effort
+
+After the worktree manager verifies the story worktree and branch, request `in_progress` before starting Research:
+
+```sh
+worktree="<repository-base>/.worktrees/<id>"
+git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
+consumer_root="$(dirname "$git_common_dir")"
+runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
+if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" in_progress); fi
+```
+
+Missing runtime, disabled/incomplete Jira, or an unlinked story is a normal skip. Report Jira warnings, then continue Research.
+
 If docs/reviews/stories.md is missing, or says `Stories ready: no`, say so: the breakdown hasn't passed /aw-stories-review, so this story may not match the PRD scope. Continue only if I confirm — this is a warning, not a block.
 
 Read: docs/stories.md (the target story), docs/architecture.md, AGENTS.md

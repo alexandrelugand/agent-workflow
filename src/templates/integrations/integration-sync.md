@@ -12,13 +12,16 @@ The consumer config is `.agent-workflow/integrations.yaml` and the installed run
 
 | Verified local event | Jira action |
 |---|---|
-| `/aw-execute` starts for a linked story | Request the configured `in_progress` destination. |
+| `/aw-research` or `/aw-orchestrator` starts a linked story | Request the configured `in_progress` destination. |
+| `/aw-execute` starts or resumes implementation | Request the configured `in_progress` destination. |
 | `/aw-review` starts | Request the configured `in_review` destination. |
-| Review is rejected | Request `blocked` only when it is configured and exactly available; otherwise skip or warn. Never request Done here. |
-| `/aw-ship` finds an open PR | Upsert the stable Jira remote link as Open; keep the issue In Review. |
-| `/aw-ship` verifies PR state exactly `MERGED` | Upsert the same link as Merged, then request the configured `done` destination. |
+| Review is rejected | Request `blocked` only when configured and exactly available; never request Done. |
+| Review passes | Request the configured `done` destination; a merged PR is not required. |
+| A child Story changes status | Reconcile its parent Epic: In Progress when any configured child Story is In Progress; Done only when all are Done. |
+| `/aw-ship` finds an open PR | Upsert the stable Jira remote link as Open; keep the Story Done. |
+| `/aw-ship` verifies PR state exactly `MERGED` | Upsert the same link as Merged; Story Done remains independent of merge proof. |
 
-An open PR, successful review, implementation completion, or checked local criterion is not proof of delivery. Only the exact merged-state proof supplied by `/aw-ship` permits Done.
+Story Done means the code review passed. Only the exact merged-state proof supplied by `/aw-ship` permits the PR remote link to be marked Merged; Jira workflow state and the PR link outcome are separate.
 
 ## Transition resolution
 
@@ -28,6 +31,8 @@ Workflow transition IDs are project- and issue-specific; never hard-code or gues
 - No matching destination or more than one match: warning; no transition POST.
 - `blocked` not configured: normal skip.
 - Jira unavailable or transition rejected: visible warning; local pipeline work continues.
+
+Epic aggregation reads all configured child Story statuses from Jira. It never marks an Epic Done when there are no child Stories or any child remains outside the configured Done status. Missing/ambiguous Epic transitions or failed status searches warn without stopping local work.
 
 Configure destination names under `jira.status_names` in the shared consumer config. Confirm actual workflow names in the target Jira project before enabling lifecycle sync.
 

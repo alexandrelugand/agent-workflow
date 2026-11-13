@@ -30,7 +30,7 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 4. Check the plan's frontmatter: it must contain `validated: yes`. Otherwise STOP: "Plan not validated. Review it, then rerun /aw-plan <id> to validate."
 5. Read docs/reviews/<id>.md from the worktree if it exists. If it contains `Ship allowed: no`, this is a FIX run: the review findings come first.
 
-Before handing off, attempt the best-effort Jira execution transition from the verified story worktree:
+Before each implementation handoff, including a review-fix run, attempt the best-effort Jira `in_progress` transition from the verified story worktree:
 
 ```sh
 worktree="<repository-base>/.worktrees/<id>"

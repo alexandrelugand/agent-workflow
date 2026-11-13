@@ -512,11 +512,9 @@ const lifecycleStatuses = new Set(['in_progress', 'in_review', 'blocked', 'done'
 export async function syncJiraLifecycle({ storyId, status, pullRequestUrl = null, merged = false, ...options } = {}) {
   requestedIds([storyId]);
   if (!lifecycleStatuses.has(status)) throw new Error('Provide a supported Jira lifecycle status');
-  if (typeof merged !== 'boolean') throw new Error('Invalid merged-PR proof');
-  if (status === 'done' && (merged !== true || typeof pullRequestUrl !== 'string' || !pullRequestUrl.trim())) {
-    return { storyId, synced: false, warning: 'Jira Done requires a verified merged PR URL' };
-  }
-  if (merged && status !== 'done') throw new Error('Merged-PR proof is only valid for Jira Done');
+  if (typeof merged !== 'boolean') throw new Error('Invalid merged-PR outcome');
+  if (merged && status !== 'done') throw new Error('Merged-PR outcome is only valid for Jira Done');
+  if (merged && (typeof pullRequestUrl !== 'string' || !pullRequestUrl.trim())) throw new Error('A pull request URL is required for a merged-PR outcome');
   if (pullRequestUrl !== null && (typeof pullRequestUrl !== 'string' || !pullRequestUrl.trim())) throw new Error('Invalid pull request URL');
   if (pullRequestUrl && !['in_review', 'done'].includes(status)) throw new Error('Pull request links are valid only during review or verified delivery');
 
@@ -533,15 +531,25 @@ export async function syncJiraLifecycle({ storyId, status, pullRequestUrl = null
   if (pullRequestUrl) {
     try { normalizedPullRequestUrl = service.validateJiraPullRequestUrl(pullRequestUrl); }
     catch {
-      if (status === 'done') return { storyId, issueKey: record.jira.key, targetStatus: status, synced: false, warning: 'Invalid PR URL; Jira Done was not attempted' };
       warnings.push('Jira PR link failed (invalid HTTPS pull request URL)');
       normalizedPullRequestUrl = null;
     }
   }
+
+  let parentEpicKey = null;
+  if (status !== 'blocked') {
+    try {
+      const issue = await service.getJiraIssue(record.jira.key);
+      parentEpicKey = issue.fields?.parent?.key || null;
+    } catch (error) {
+      warnings.push(`Jira Epic status lookup failed${Number.isInteger(error?.status) ? ` (HTTP ${error.status})` : ''}`);
+    }
+  }
+
   let pullRequestLinked = null;
   if (normalizedPullRequestUrl) {
     try {
-      pullRequestLinked = (await service.linkJiraPullRequest(record.jira.key, { url: normalizedPullRequestUrl, merged: status === 'done' })).linked;
+      pullRequestLinked = (await service.linkJiraPullRequest(record.jira.key, { url: normalizedPullRequestUrl, merged })).linked;
     } catch (error) {
       warnings.push(`Jira PR link failed${Number.isInteger(error?.status) ? ` (HTTP ${error.status})` : ''}`);
     }
@@ -553,6 +561,19 @@ export async function syncJiraLifecycle({ storyId, status, pullRequestUrl = null
   } catch (error) {
     warnings.push(`Jira status transition failed${Number.isInteger(error?.status) ? ` (HTTP ${error.status})` : ''}`);
   }
+
+  let epic = null;
+  if (parentEpicKey) {
+    try {
+      const storyUpdate = transition?.transitioned || transition?.alreadyAtTarget
+        ? { issueKey: record.jira.key, semanticStatus: status }
+        : null;
+      epic = await service.syncJiraEpicLifecycle(parentEpicKey, storyUpdate);
+      if (epic.warning) warnings.push(`Jira Epic status sync failed: ${epic.warning}`);
+    } catch (error) {
+      warnings.push(`Jira Epic status sync failed${Number.isInteger(error?.status) ? ` (HTTP ${error.status})` : ''}`);
+    }
+  }
   return {
     storyId,
     issueKey: record.jira.key,
@@ -560,6 +581,7 @@ export async function syncJiraLifecycle({ storyId, status, pullRequestUrl = null
     synced: warnings.length === 0 && !transition?.skipped,
     ...(transition ? { transition: { transitioned: transition.transitioned, ...(transition.alreadyAtTarget ? { alreadyAtTarget: true } : {}) } } : {}),
     ...(transition?.skipped ? { skipped: true, reason: transition.reason } : {}),
+    ...(epic ? { epic } : {}),
     ...(pullRequestUrl ? { pullRequestLinked: pullRequestLinked === true } : {}),
     ...(warnings.length ? { warnings } : {})
   };
