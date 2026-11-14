@@ -199,6 +199,7 @@ deleted is worse than no test** — it hides the hole it claims to cover.
 - Jira HTTP behavior is tested with injected/mock `fetch` and synthetic credentials using `node:test`; no permanent test contacts Jira. Use `node --test` for the focused Node suite.
 - Keep Jira optional: disabled or incomplete configuration means no network request; pipeline sync failures are explicit and fail-soft. Use Jira Cloud REST v3 contracts, ADF descriptions, stable `aw-story-<id>` labels, and per-issue transition discovery.
 - Jira Story transitions follow pipeline events: Research/orchestrated start and implementation fixes request `in_progress`, review start requests `in_review`, and a passed review requests `done`. Rejected reviews may request optional `blocked`; execution returns a fixed Story to `in_progress`. A parent Epic becomes `in_progress` when any configured child Story is in progress and `done` only when all such Stories are done. Jira remains best-effort; do not infer status from local Markdown or require merge proof for review-complete Done.
+- When Jira is enabled and fully configured, after every agent-workflow state transition verify the linked Story and its parent Epic, then synchronize their status with the corresponding configured transition; report missing transitions or sync failures explicitly. Never infer Jira status from local Markdown, and only a verified merged PR may trigger the Jira `done` transition.
 
 ## Definition of Done (per feature)
 - Single PR, structured description, readable diff
