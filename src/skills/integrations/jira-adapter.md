@@ -24,7 +24,7 @@ Read only secret-free settings from the config. The CLI reads `JIRA_API_URL`, `J
 
 ## Lifecycle synchronization
 
-Pipeline lifecycle calls are fail-soft: `/aw-research` and the orchestrator start a linked Story as In Progress; `/aw-review` sets In Review, then Done on a passing review; `/aw-execute` returns implementation fixes to In Progress. A parent Epic moves to In Progress when any configured child Story is In Progress and to Done only when all are Done. `/aw-ship` keeps the Story Done and updates the idempotent PR link to Merged only after verifying the PR is merged.
+Pipeline lifecycle calls are fail-soft: `/aw-research` and the orchestrator start a linked Story as In Progress; `/aw-review` sets In Review, and a passing review leaves it there; `/aw-execute` returns implementation fixes to In Progress. Only `/aw-ship`, after explicit user authorization, requests Story Done. A parent Epic moves to In Progress when any configured child Story is In Progress and to Done only when all are Done. Verified merge proof is required only to mark the Jira PR link as Merged.
 
 ## Explicit import workflow
 
@@ -58,4 +58,4 @@ node "$integration_cli" resolve-pending <story-id> --confirm-not-created
 
 For one existing Jira issue, `/aw-integrate-link <story-id> <jira-key> jira` validates the project and configured type and refuses to replace a different local key. `/aw-integrate-unlink <story-id> jira` removes only the local Jira section and never deletes the Jira issue.
 
-Do not mirror fetched Jira status into local integration records or infer it from checkboxes. Pipeline commands own lifecycle requests. Story Done means review passed; verified merge proof is required only to mark the Jira PR remote link as Merged.
+Do not mirror fetched Jira status into local integration records or infer it from checkboxes. Pipeline commands own lifecycle requests. Story Done means the user authorized `/aw-ship` after review; a passing review alone leaves it In Review. Verified merge proof is needed only to mark the Jira PR remote link as Merged.

@@ -51,17 +51,7 @@ Wait for the verdict.
 ### Step 2 — Report
 Write the full report to docs/reviews/<id>.md. It MUST end with the exact lines `Max severity: ...` and `Ship allowed: yes` or `Ship allowed: no` — /aw-ship greps that line, and without it the ship stays blocked. A single critical = no.
 
-After writing the report, if it ends with `Ship allowed: yes`, best-effort request Jira `done` from the verified worktree; review success is the Done event and does not require a merged PR:
-
-```sh
-worktree="<repository-base>/.worktrees/<id>"
-git_common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir)"
-consumer_root="$(dirname "$git_common_dir")"
-runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
-if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" done); fi
-```
-
-Missing runtime, disabled/incomplete Jira, an unlinked story, or transition failure is a warning; never change the review verdict.
+Passing the review gate is not a Jira Done event. Leave the Story in `in_review`; only `/aw-ship`, after explicit user authorization, requests Jira `done`.
 
 ### Step 3 — Gate (fail-closed)
 - Any verdict with `Ship allowed: no` → from the verified worktree, repeat Step 1's runtime resolution and best-effort run `node "$runtime" lifecycle "<id>" blocked` before stopping or entering fix mode. The runtime skips `blocked` when it is not configured and warns when no applicable transition exists. Surface the result; keep the ship gate closed and never mark Done.

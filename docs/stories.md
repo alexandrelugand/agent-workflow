@@ -63,9 +63,9 @@ The current `JIRAService.createTicket()` retries every failure and can duplicate
 ### Acceptance criteria
 
 - [ ] `/aw-research` or the orchestrator starting a story requests the configured `in_progress` destination; `/aw-execute` requests it again when implementation or review fixes start. A missing transition warns without stopping local work.
-- [ ] At review start, the linked issue moves to configured `in_review`. A rejected review is never marked Done; `blocked` is used only when configured and an applicable transition exists. A passed review moves the Story to configured `done`, without requiring a merged PR.
+- [ ] At review start, the linked issue moves to configured `in_review`. A rejected review is never marked Done; `blocked` is used only when configured and an applicable transition exists. A passed review leaves the Story in `in_review`; only explicit user authorization of `/aw-ship` moves it to configured `done`, without requiring a merged PR.
 - [ ] A parent Epic moves to configured `in_progress` when any configured child Story is `in_progress`, and to configured `done` only when every such Story is `done`. Jira status is fetched from the parent/child issues; transitions use their available IDs.
-- [ ] `/aw-ship` maintains one idempotent PR remote link and records Merged only after it verifies the PR's merged state. Merge proof does not gate the review-complete Story Done status.
+- [ ] After user-authorized `/aw-ship`, the command maintains one idempotent PR remote link and records Merged only after it verifies the PR's merged state. User ship authorization—not merge proof—gates the Story Done status.
 - [ ] `/aw-integrate-status` shows linked issue keys and fetched Jira statuses. `/aw-status` labels local pipeline state separately from Jira state; a failed fetch is shown as unavailable, never inferred from local files.
 - [ ] Jira failures during execution, review, or ship leave local progress intact and produce an explicit sync warning. Explicit configure/import operations fail rather than report success when Jira rejects the request.
 
@@ -75,4 +75,4 @@ The current `JIRAService.createTicket()` retries every failure and can duplicate
 
 ### Agentic notes
 
-`JIRAService.syncStory()` currently returns `{ synced: true }` without a request. Jira workflow transitions are project-specific: query each issue's available transitions and use the matching ID. Story Done is the code-review pass state; the manual ship strategy remains independent and uses verified merge proof only to mark the PR remote link Merged. No UI; skip Design.
+`JIRAService.syncStory()` currently returns `{ synced: true }` without a request. Jira workflow transitions are project-specific: query each issue's available transitions and use the matching ID. A passing review leaves the Story in Review; only user-authorized `/aw-ship` marks it Done. Verified merge proof only marks the PR remote link Merged. No UI; skip Design.

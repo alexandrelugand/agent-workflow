@@ -32,4 +32,4 @@ A non-secret pending marker under the ignored shared `.agent-workflow/jira-impor
 
 Jira status, priority, assignee, transitions, and PR synchronization are not stored in these records and belong to the separate lifecycle story.
 
-When Jira is enabled, `/aw-research` and the orchestrator start Stories as In Progress; review starts In Review and a passing review moves the Story to Done. `/aw-execute` returns fixes to In Progress. Parent Epics become In Progress when any child Story is In Progress and Done only when all child Stories are Done. `/aw-ship` updates the PR link to Merged only after a verified merge; it does not gate Story Done.
+When Jira is enabled, `/aw-research` and the orchestrator start Stories as In Progress; review starts In Review and a passing review leaves the Story In Review. `/aw-execute` returns fixes to In Progress. User-authorized `/aw-ship` moves the Story to Done; parent Epics become In Progress when any child Story is In Progress and Done only when all child Stories are Done. `/aw-ship` updates the PR link to Merged only after a verified merge; merge proof does not gate Story Done.

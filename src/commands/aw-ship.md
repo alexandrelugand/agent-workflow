@@ -20,7 +20,7 @@ If the file is missing or the command fails, STOP immediately: "Ship blocked —
 
 Then proceed:
 1. Without switching branches, commit docs/reviews/<id>.md on the already verified feature branch if not already committed (the PR must carry its review). Then verify the tests pass. Failing tests → stop.
-2. If a PR for `feature/<id>` already exists, do not open a duplicate; read its `state` and `url`: `OPEN` → continue with Jira still Done from review; `MERGED` → verify the merge, update the Jira PR link as merged, then continue to Cleanup; a closed-unmerged PR is not complete and does not qualify for Cleanup. Otherwise push and open a clean PR, capturing its URL.
+2. If a PR for `feature/<id>` already exists, do not open a duplicate; read its `state` and `url`: `OPEN` → continue and request Jira Done during this user-authorized ship; `MERGED` → verify the merge, update the Jira PR link as merged, then continue to Cleanup; a closed-unmerged PR is not complete and does not qualify for Cleanup. Otherwise push and open a clean PR, capturing its URL.
 3. Read the ship strategy from AGENTS.md ("Ship strategy" section). No section, or no explicit `auto` → the mode is manual.
 
 ## Jira lifecycle — best effort
@@ -33,9 +33,9 @@ consumer_root="$(dirname "$git_common_dir")"
 runtime="$consumer_root/.agent-workflow/runtime/integration-cli.mjs"
 ```
 
-After creating or finding a PR, call `node "$runtime" lifecycle "<id>" done --pr-url "<url>"` for an open/manual PR. This preserves the review-complete Done status and upserts the PR link as Open. For an existing or auto-merged PR, first run `gh pr view feature/<id> --json state,url,mergedAt` and require `state` to equal exactly `MERGED`; then call `node "$runtime" lifecycle "<id>" done --pr-url "<url>" --merged` to update the same link as Merged. The review pass, not merge proof, is the Jira Done event.
+After creating or finding a PR, the user's explicit `/aw-ship` invocation (or the orchestrator's explicit Ship confirmation) authorizes the Story Done transition. For an open PR, call `node "$runtime" lifecycle "<id>" done --pr-url "<url>"` to mark the Story Done and upsert the PR link as Open. For an already-merged PR, first run `gh pr view feature/<id> --json state,url,mergedAt` and require `state` to equal exactly `MERGED`; then call `node "$runtime" lifecycle "<id>" done --pr-url "<url>" --merged` to mark Done and update the same link as Merged. A passing review alone never requests Jira Done; merge proof is required only for the PR link's Merged outcome.
 
-Show any `warnings`, `synced: false`, or CLI error as a Jira sync warning and continue the local ship flow. Missing runtime, disabled/incomplete Jira, or no local Jira link is a normal skip. A Jira failure never blocks the manual-merge rule or Cleanup. An open or closed-unmerged PR is not marked Merged and does not change the review-complete Done status.
+Show any `warnings`, `synced: false`, or CLI error as a Jira sync warning and continue the local ship flow. Missing runtime, disabled/incomplete Jira, or no local Jira link is a normal skip. A Jira failure never blocks the manual-merge rule or Cleanup. An open or closed-unmerged PR is not marked Merged; Story Done comes from the explicit user-authorized `/aw-ship`, not from the review pass or PR state.
 
 ## Step 4 — Merge (per the ship strategy)
 

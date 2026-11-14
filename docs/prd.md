@@ -41,7 +41,7 @@ Scale: 1 trivial operations · 2 form + persistence + list · 3 core features / 
 - Automatically creating an Epic or Requirement for each story; a configured Epic parent is optional.
 - Bidirectional synchronization of story text, acceptance criteria, plan checkboxes, code, or full pipeline history.
 - Webhooks, exhaustive backlog polling, or a Jira dependency that blocks local pipeline work.
-- Marking an issue Done at plan approval, implementation completion, successful review, or PR creation.
+- Automatic Jira Done at plan approval, implementation completion, successful review, or PR creation; Jira Done requires explicit user authorization of `/aw-ship` and is not gated on merge proof.
 - Importing a separate consumer project's stories as part of this repository change.
 - Tests that contact a real Jira instance.
 
@@ -69,6 +69,6 @@ Scale: 1 trivial operations · 2 form + persistence + list · 3 core features / 
 - Status, logs, errors, command output, and test output never reveal the API token or Authorization header.
 - Import previews only the requested story IDs, makes no Jira writes until explicit confirmation, reuses a single existing match, and stops without creation on ambiguous matches.
 - Every successfully imported story has one stable Jira issue and a local key/URL record; reruns do not create duplicates; uncertain creates search by marker before a transient retry.
-- Jira Stories transition to `in_progress` at Research/orchestrated start and implementation fixes, to `in_review` when review starts, and to `done` when review passes. Parent Epics move to `in_progress` when any child Story is in progress and to `done` only when all child Stories are done; PR merge proof controls only the remote-link outcome.
+- Jira Stories transition to `in_progress` at Research/orchestrated start and implementation fixes, to `in_review` when review starts, and remain `in_review` when review passes. Only user-authorized `/aw-ship` transitions a Story to `done`; merge proof controls only the remote-link outcome. Parent Epics move to `in_progress` when any child Story is in progress and to `done` only when all child Stories are done.
 - Status commands distinguish local pipeline state from fetched Jira state and show remote state as unavailable when Jira cannot be reached.
 - Jira outages never block or erase local execution; explicit configuration/import operations do not claim success after a Jira failure.

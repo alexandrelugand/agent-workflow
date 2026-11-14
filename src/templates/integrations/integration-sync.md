@@ -16,12 +16,12 @@ The consumer config is `.agent-workflow/integrations.yaml` and the installed run
 | `/aw-execute` starts or resumes implementation | Request the configured `in_progress` destination. |
 | `/aw-review` starts | Request the configured `in_review` destination. |
 | Review is rejected | Request `blocked` only when configured and exactly available; never request Done. |
-| Review passes | Request the configured `done` destination; a merged PR is not required. |
+| Review passes | Leave the Story in `in_review`; a passing review alone does not request Done. |
 | A child Story changes status | Reconcile its parent Epic: In Progress when any configured child Story is In Progress; Done only when all are Done. |
-| `/aw-ship` finds an open PR | Upsert the stable Jira remote link as Open; keep the Story Done. |
-| `/aw-ship` verifies PR state exactly `MERGED` | Upsert the same link as Merged; Story Done remains independent of merge proof. |
+| `/aw-ship` creates or finds a PR after explicit user approval | Request the configured `done` destination and upsert the stable Jira remote link as Open. |
+| `/aw-ship` verifies PR state exactly `MERGED` | Upsert the same link as Merged; merge proof controls the link outcome, not the Story's Done status. |
 
-Story Done means the code review passed. Only the exact merged-state proof supplied by `/aw-ship` permits the PR remote link to be marked Merged; Jira workflow state and the PR link outcome are separate.
+Story Done means the user explicitly authorized `/aw-ship` after review; a passing review alone leaves the Story In Review. Only exact merged-state proof supplied by `/aw-ship` permits the PR remote link to be marked Merged; Jira workflow state and the PR link outcome are separate.
 
 ## Transition resolution
 

@@ -518,7 +518,7 @@ test('lifecycle action skips unlinked stories without Jira requests', async () =
   } finally { fixture.clean(); }
 });
 
-test('passing review marks a Story Done and completes its Epic when all child Stories are Done', async () => {
+test('explicit Done lifecycle request marks a Story Done and completes its Epic when all child Stories are Done', async () => {
   const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
   let storyStatus = 'In Review';
   let epicStatus = 'In Progress';
@@ -588,7 +588,7 @@ test('starting or resuming a Story moves its parent Epic to In Progress', async 
   } finally { fixture.clean(); }
 });
 
-test('review-complete Stories stay Done while their PR link moves from Open to Merged', async () => {
+test('Done Stories stay Done while their PR link moves from Open to Merged', async () => {
   const record = '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n';
   const fixture = importerFixture({ record });
   const linkBodies = [];
@@ -651,7 +651,7 @@ test('lifecycle action records a PR link and continues when the Jira transition 
   } finally { fixture.clean(); }
 });
 
-test('invalid pull-request URL warns but does not block review-complete Done', async () => {
+test('invalid pull-request URL warns but does not block the Done lifecycle transition', async () => {
   const fixture = importerFixture({ record: '## Jira\n- Key: DEMO-17\n- URL: https://example.atlassian.net/browse/DEMO-17\n' });
   const requests = [];
   try {

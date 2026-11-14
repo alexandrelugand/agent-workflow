@@ -57,4 +57,4 @@ If the config or runtime is absent, stop without making a Jira request. The CLI 
   node "$integration_cli" resolve-pending <story-id> --confirm-not-created
   ```
 
-Import itself does not synchronize Story lifecycle or create remote dependency links outside a confirmed import. `/aw-research` and the orchestrator start linked Stories as In Progress; `/aw-review` sets In Review and then Done on a passing review; `/aw-execute` returns fixes to In Progress. Parent Epics become In Progress when any configured child Story is In Progress and Done only when all are Done. `/aw-ship` uses verified merge proof only to mark the PR remote link as Merged.
+Import itself does not synchronize Story lifecycle or create remote dependency links outside a confirmed import. `/aw-research` and the orchestrator start linked Stories as In Progress; `/aw-review` sets In Review and keeps it there after a passing review; `/aw-execute` returns fixes to In Progress. Only user-authorized `/aw-ship` requests Done. Parent Epics become In Progress when any configured child Story is In Progress and Done only when all are Done. Verified merge proof only marks the PR remote link as Merged.

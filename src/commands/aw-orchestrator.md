@@ -120,7 +120,7 @@ if [ -f "$runtime" ]; then (cd "$worktree" && node "$runtime" lifecycle "<id>" i
 Disabled/incomplete Jira, an unlinked story, or absent runtime is a normal skip. Surface sync warnings/errors and continue the independent review.
 Delegate to the `reviewer` subagent exactly as /aw-review does: fresh context, story diff `git diff <default-branch>...feature/<id>`, test suite run by the reviewer, verdict ending with the exact `Max severity:` and `Ship allowed:` lines. Write the report to docs/reviews/<id>.md.
 
-After the reviewer writes its report, if the verdict is `Ship allowed: yes`, best-effort request Jira `done` from the verified worktree. This review-pass transition does not require a merged PR; Jira failure warns without changing the verdict or ship gate.
+After the reviewer writes its report, do not request Jira `done`: a passing review leaves the Story in `in_review`. Only the explicit Ship approval in Phase 6 proceeds to `/aw-ship`, which requests Done after creating or finding a PR.
 
 **Telegram Notifications** (if enabled):
 - Send review results
@@ -142,9 +142,9 @@ An unconfigured `blocked` status is skipped; Jira warnings never soften or open 
 Gate: verdict `Ship allowed: no` → go back to Phase 4 in fix mode. Maximum 2 fix loops; still blocked after that → stop and report the open findings. Never soften a verdict to move on.
 
 ## Phase 6 — Ship
-CHECKPOINT — review passed: show the verdict and ask via AskUserQuestion: "Ship now?" — options: Ship / Not now. Only an explicit Ship proceeds; then run /aw-ship's flow: mechanical gate (`grep -q '^Ship allowed: yes' docs/reviews/<id>.md`), tests on the branch, push, PR — then the project's ship strategy (manual, the default: stop at the PR; auto: merge, deploy, confirm live, clean up the branch once the merge is proven).
+CHECKPOINT — review passed: show the verdict and ask via AskUserQuestion: "Ship now?" — options: Ship / Not now. Only an explicit Ship proceeds; Not now stops here without invoking `/aw-ship` or requesting Jira `done`, leaving the Story In Review. Then run `/aw-ship`'s mechanical gate (`grep -q '^Ship allowed: yes' docs/reviews/<id>.md`), tests on the branch, push, and PR; then follow the project's ship strategy (manual by default: stop at the PR; auto: merge, deploy, confirm live, and clean up only after merge proof).
 
-Jira lifecycle remains best effort within `/aw-ship`: the Story was marked Done on review pass. For an open PR, run `lifecycle <id> done --pr-url <url>` to preserve Done while upserting the PR link as Open. After exact `MERGED` proof, run `lifecycle <id> done --pr-url <url> --merged` to update that same link; `--merged` records the PR outcome and is not the Done gate. Jira warnings never block the local ship/cleanup rules.
+Jira lifecycle remains best effort within `/aw-ship`: after explicit user authorization and creating or finding a PR, request Story `done`. For an open PR, call `lifecycle <id> done --pr-url <url>` to mark it Done and upsert the PR link as Open. For an already-merged PR, require exact `MERGED` proof with `gh pr view feature/<id> --json state,url,mergedAt`, then call `lifecycle <id> done --pr-url <url> --merged` to update the link; `--merged` controls only the PR outcome. A review pass alone never requests Done. Jira warnings never block local ship or cleanup rules.
 
 **Telegram Notifications** (if enabled):
 - Send PR created notification
